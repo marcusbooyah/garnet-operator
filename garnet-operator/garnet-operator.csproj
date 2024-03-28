@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<RootNamespace>GarnetOperator</RootNamespace>
+		<NeonOperatorGenerateCrds>false</NeonOperatorGenerateCrds>
+		<NeonOperatorGenerateRbac>false</NeonOperatorGenerateRbac>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Macross.Json.Extensions" Version="3.0.0" />
+		<PackageReference Include="Microsoft.Garnet" Version="1.0.2" />
+		<PackageReference Include="Neon.Kubernetes" Version="1.0.7" />
+		<PackageReference Include="Neon.Kubernetes.Core" Version="1.0.7" />
+		<PackageReference Include="Neon.Operator" Version="1.0.7" />
+		<PackageReference Include="OpenTelemetry" Version="1.7.0" />
+		<PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.7.0" />
+		<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
+		<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+		<PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.7.0" />
+		<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.0" />
+		<PackageReference Include="prometheus-net" Version="8.2.1" />
+	</ItemGroup>
+
+</Project>
