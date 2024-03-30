@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: garnet-operator
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - configmaps/status
+  - pods
+  - pods/status
+  - services
+  - services/status
+  verbs:
+  - '*'
+- apiGroups:
+  - garnet.k8soperator.io
+  resources:
+  - garnetclusters
+  - garnetclusters/status
+  verbs:
+  - '*'
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  - poddisruptionbudgets/status
+  verbs:
+  - '*'
