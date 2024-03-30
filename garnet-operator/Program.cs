@@ -37,7 +37,7 @@ namespace GarnetOperator
                        settings.UserImpersonationEnabled = false;
                    }
                })
-               .UseStartup<OperatorStartup>();
+               .UseStartup<Startup>();
 
             var tracingOtlpEndpoint = Environment.GetEnvironmentVariable("TRACING_OTLP_ENDPOINT");
 

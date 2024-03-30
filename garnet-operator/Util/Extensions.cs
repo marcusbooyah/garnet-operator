@@ -56,7 +56,7 @@ namespace GarnetOperator
         /// <summary>
         /// Sets the owner reference for a list of owner references.
         /// </summary>
-        /// <param name="ownerReferences">The list of owner references.</param>
+        /// <param name="objectMeta">The object metadata.</param>
         /// <param name="reference">The owner reference to set.</param>
         /// <returns><c>true</c> if the owner reference was added or updated; otherwise, <c>false</c>.</returns>
         public static bool SetOwnerReference(this V1ObjectMeta objectMeta, V1OwnerReference reference)
@@ -109,6 +109,16 @@ namespace GarnetOperator
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Sets the condition for the specified resource.
+        /// </summary>
+        /// <param name="resource">The resource to set the condition for.</param>
+        /// <param name="k8s">The Kubernetes client.</param>
+        /// <param name="type">The type of the condition.</param>
+        /// <param name="status">The status of the condition.</param>
+        /// <param name="reason">The reason for the condition.</param>
+        /// <param name="message">The message for the condition.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         public static async Task SetConditionAsync(this V1alpha1GarnetCluster resource,
             IKubernetes k8s,
             string type,
@@ -152,6 +162,14 @@ namespace GarnetOperator
                 name: resource.Name(),
                 namespaceParameter: resource.Namespace());
         }
+
+        /// <summary>
+        /// Adds a node to the specified resource.
+        /// </summary>
+        /// <param name="resource">The resource to add the node to.</param>
+        /// <param name="k8s">The Kubernetes client.</param>
+        /// <param name="node">The node to add.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         public static async Task AddNodeAsync(this V1alpha1GarnetCluster resource,
             IKubernetes k8s,
             GarnetNode node)
@@ -180,6 +198,14 @@ namespace GarnetOperator
                 name: resource.Name(),
                 namespaceParameter: resource.Namespace());
         }
+
+        /// <summary>
+        /// Removes a node from the specified resource.
+        /// </summary>
+        /// <param name="resource">The resource to remove the node from.</param>
+        /// <param name="k8s">The Kubernetes client.</param>
+        /// <param name="node">The node to remove.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
         public static async Task RemoveNodeAsync(this V1alpha1GarnetCluster resource,
             IKubernetes k8s,
             GarnetNode node)
@@ -196,6 +222,11 @@ namespace GarnetOperator
                 namespaceParameter: resource.Namespace());
         }
 
+        /// <summary>
+        /// Converts the string to a patch string.
+        /// </summary>
+        /// <param name="value">The string value.</param>
+        /// <returns>The patch string.</returns>
         public static string ToPatchString(this string value)
         {
             return value.Replace("/", "~1");

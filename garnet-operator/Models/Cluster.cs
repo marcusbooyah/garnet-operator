@@ -25,6 +25,8 @@ namespace GarnetOperator.Models
 
         public int NumberOfPrimariesReady { get; set; }
 
+        public int NumberOfReplicasReady { get; set; }
+
         public int NumberOfGarnetNodesRunning => Nodes.Count;
 
         public Dictionary<string, int> NumberOfReplicasPerPrimary { get; set; } = new Dictionary<string, int>();

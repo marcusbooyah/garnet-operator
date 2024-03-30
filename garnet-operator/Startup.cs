@@ -1,3 +1,5 @@
+using System;
+
 using GarnetOperator.Util;
 
 using Microsoft.AspNetCore.Builder;
@@ -13,15 +15,13 @@ using Neon.Operator;
 
 using Prometheus;
 
-using System;
-
 namespace GarnetOperator
 {
-    public class OperatorStartup
+    public class Startup
     {
         public IConfiguration Configuration { get; }
 
-        public OperatorStartup(IConfiguration configuration)
+        public Startup(IConfiguration configuration)
         {
             this.Configuration = configuration;
         }
@@ -39,7 +39,7 @@ namespace GarnetOperator
                 options.AddJsonConsole();
             });
 
-            var logger = loggerFactory.CreateLogger<OperatorStartup>();
+            var logger = loggerFactory.CreateLogger<Startup>();
 
             services.AddSingleton<ILoggerFactory>(loggerFactory);
             services.AddLogging();

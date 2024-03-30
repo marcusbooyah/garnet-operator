@@ -21,6 +21,9 @@ using Neon.Tasks;
 
 namespace GarnetOperator.Util
 {
+    /// <summary>
+    /// Helper class for interacting with Garnet.
+    /// </summary>
     public class GarnetHelper
     {
         private readonly IKubernetes           k8s;
@@ -47,16 +50,35 @@ namespace GarnetOperator.Util
             this.services      = services;
         }
 
+        /// <summary>
+        /// Creates a Garnet client asynchronously using the specified GarnetNode.
+        /// </summary>
+        /// <param name="node">The GarnetNode containing the connection details.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
         public Task<GarnetClient> CreateClientAsync(GarnetNode node)
         {
             return CreateClientAsync(node.Address, node.Port, node.Namespace, node.PodName);
         }
 
+        /// <summary>
+        /// Creates a Garnet client asynchronously using the specified V1Pod and port.
+        /// </summary>
+        /// <param name="pod">The V1Pod object representing the pod.</param>
+        /// <param name="port">The port number.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
         public Task<GarnetClient> CreateClientAsync(V1Pod pod, int port)
         {
             return CreateClientAsync(pod.Status.PodIP, port, pod.Namespace(), pod.Name());
         }
 
+        /// <summary>
+        /// Creates a Garnet client asynchronously using the specified address, port, namespace, and pod name.
+        /// </summary>
+        /// <param name="address">The address of the Garnet node.</param>
+        /// <param name="port">The port number.</param>
+        /// <param name="namespace">The namespace of the pod.</param>
+        /// <param name="podName">The name of the pod.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
         public async Task<GarnetClient> CreateClientAsync(
             string address,
             int port,

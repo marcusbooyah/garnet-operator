@@ -10,6 +10,14 @@ namespace GarnetOperator
     internal static partial class GarnetClientExtensions
     {
         public const string OkResult = "OK";
+
+        /// <summary>
+        /// Sends a MEET command to the Garnet client to connect to a specified address and port.
+        /// </summary>
+        /// <param name="client">The Garnet client.</param>
+        /// <param name="address">The address to connect to.</param>
+        /// <param name="port">The port to connect to. Defaults to Constants.Ports.Redis.</param>
+        /// <returns>The result of the MEET command.</returns>
         public static async Task<string> MeetAsync(this GarnetClient client, string address, int port = Constants.Ports.Redis)
         {
             var result = await client.ExecuteForStringResultAsync("CLUSTER", ["MEET", address, port.ToString()]);
@@ -18,6 +26,13 @@ namespace GarnetOperator
 
             return result;
         }
+
+        /// <summary>
+        /// Sends a FORGET command to the Garnet client to remove a node from the cluster.
+        /// </summary>
+        /// <param name="client">The Garnet client.</param>
+        /// <param name="id">The ID of the node to remove.</param>
+        /// <returns>The result of the FORGET command.</returns>
         public static async Task<string> ForgetAsync(this GarnetClient client, string id)
         {
             var result = await client.ExecuteForStringResultAsync("CLUSTER", ["FORGET", id]);
@@ -26,12 +41,25 @@ namespace GarnetOperator
 
             return result;
         }
+
+        /// <summary>
+        /// Sends a MYID command to the Garnet client to retrieve the ID of the current node.
+        /// </summary>
+        /// <param name="client">The Garnet client.</param>
+        /// <returns>The result of the MYID command.</returns>
         public static async Task<string> MyIdAsync(this GarnetClient client)
         {
             var result = await client.ExecuteForStringResultAsync("CLUSTER", ["MYID"]);
 
             return result;
         }
+
+        /// <summary>
+        /// Sends a REPLICATE command to the Garnet client to replicate a specified node.
+        /// </summary>
+        /// <param name="client">The Garnet client.</param>
+        /// <param name="id">The ID of the node to replicate.</param>
+        /// <returns>The result of the REPLICATE command.</returns>
         public static async Task<string> ReplicateAsync(this GarnetClient client, string id)
         {
             var result = await client.ExecuteForStringResultAsync("CLUSTER", ["REPLICATE", id]);
@@ -40,6 +68,12 @@ namespace GarnetOperator
 
             return result;
         }
+
+        /// <summary>
+        /// Sends a REPLICAOF command to the Garnet client to detach the replica.
+        /// </summary>
+        /// <param name="client">The Garnet client.</param>
+        /// <returns>The result of the REPLICAOF command.</returns>
         public static async Task<string> DetachReplicaAsync(this GarnetClient client)
         {
             var result = await client.ExecuteForStringResultAsync("REPLICAOF", ["NO", "ONE"]);

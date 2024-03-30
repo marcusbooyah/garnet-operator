@@ -982,7 +982,13 @@ spec:
                   numberOfPrimaries:
                     format: int32
                     type: integer
+                  numberOfReplicas:
+                    format: int32
+                    type: integer
                   numberOfPrimariesReady:
+                    format: int32
+                    type: integer
+                  numberOfReplicasReady:
                     format: int32
                     type: integer
                   numberOfGarnetNodesRunning:
