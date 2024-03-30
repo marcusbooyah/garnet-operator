@@ -11,37 +11,39 @@ namespace GarnetOperator.Models
 
         public int? MinReplicationFactor { get; set; }
 
-        public List<GarnetNode> Nodes { get; set; }
+        public Dictionary<string, GarnetNode> Nodes { get; set; } = new Dictionary<string, GarnetNode>();
 
         public string NodesPlacementInfo { get; set; }
 
-        public int? NumberOfPods { get; set; }
+        public int NumberOfPods => Nodes.Count;
 
-        public int? NumberOfPodsReady { get; set; }
+        public int NumberOfPodsReady { get; set; }
 
-        public int? NumberOfPrimaries { get; set; }
+        public int NumberOfPrimaries => Nodes.Values.Where(n => n.Role == GarnetRole.Primary).Count();
 
-        public int? NumberOfPrimariesReady { get; set; }
+        public int NumberOfReplicas => Nodes.Values.Where(n => n.Role == GarnetRole.Replica).Count();
 
-        public int? NumberOfGarnetNodesRunning { get; set; }
+        public int NumberOfPrimariesReady { get; set; }
 
-        public Dictionary<string, string> NumberOfReplicasPerPrimary { get; set; }
+        public int NumberOfGarnetNodesRunning => Nodes.Count;
+
+        public Dictionary<string, int> NumberOfReplicasPerPrimary { get; set; } = new Dictionary<string, int>();
 
         public string Status { get; set; }
 
         public List<GarnetNode> GetPrimaryNodes()
         {
-            return Nodes.Where(n => n.Role == GarnetRole.Primary).ToList();
+            return Nodes.Values.Where(n => n.Role == GarnetRole.Primary).ToList();
         }
 
         public List<GarnetNode> GetReplicaNodes()
         {
-            return Nodes.Where(n => n.Role == GarnetRole.Replica).ToList();
+            return Nodes.Values.Where(n => n.Role == GarnetRole.Replica).ToList();
         }
 
         public List<GarnetNode> GetUnusedNodes()
         {
-            return Nodes.Where(n => n.Role == GarnetRole.None).ToList();
+            return Nodes.Values.Where(n => n.Role == GarnetRole.None).ToList();
         }
 
         public Dictionary<string, GarnetNode> GetPrimaryToReplicas()
@@ -60,6 +62,15 @@ namespace GarnetOperator.Models
             }
 
             return result;
+        }
+
+        public void TryRemoveNode(string uid)
+        {
+            if (Nodes.ContainsKey(uid))
+            {
+
+                Nodes.Remove(uid);
+            }
         }
     }
 }

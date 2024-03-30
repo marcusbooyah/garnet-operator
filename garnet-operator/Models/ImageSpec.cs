@@ -17,7 +17,7 @@ namespace GarnetOperator.Models
         /// The image pull policy.
         /// </summary>
         [DefaultValue("IfNotPresent")]
-        public string PullPolicy { get; set; } = "IfNotPresent";
+        public string PullPolicy { get; set; } = "Always";
 
         /// <summary>
         /// The image tag.

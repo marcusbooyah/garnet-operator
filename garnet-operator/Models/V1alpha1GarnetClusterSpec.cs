@@ -21,8 +21,7 @@ namespace GarnetOperator.Models
 
         public string ServiceName { get; set; }
 
-        [DefaultValue(false)]
-        public bool ZoneAwareReplication { get; set; } = false;
+        public bool? ZoneAwareReplication { get; set; }
 
         public V1SecurityContext SecurityContext { get; set; }
 

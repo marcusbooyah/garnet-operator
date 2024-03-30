@@ -9,6 +9,8 @@ using GarnetOperator.Models;
 using k8s;
 using k8s.Models;
 
+using Neon.Common;
+using Neon.Collections;
 using Neon.K8s;
 using Neon.K8s.Core;
 using Neon.Operator.Util;
@@ -31,7 +33,7 @@ namespace GarnetOperator
         {
             if (collection == null)
             {
-                throw new ArgumentNullException(nameof(collection), "Collection is null");
+                return;
             }
 
             foreach (var item in collection)
@@ -57,20 +59,22 @@ namespace GarnetOperator
         /// <param name="ownerReferences">The list of owner references.</param>
         /// <param name="reference">The owner reference to set.</param>
         /// <returns><c>true</c> if the owner reference was added or updated; otherwise, <c>false</c>.</returns>
-        public static bool SetOwnerReference(this IList<V1OwnerReference> ownerReferences, V1OwnerReference reference)
+        public static bool SetOwnerReference(this V1ObjectMeta objectMeta, V1OwnerReference reference)
         {
-            if (!ownerReferences.Any(o => o.Uid == reference.Uid))
+            objectMeta.OwnerReferences ??= new List<V1OwnerReference>();
+
+            if (!objectMeta.OwnerReferences.Any(o => o.Uid == reference.Uid))
             {
-                ownerReferences.Add(reference);
+                objectMeta.OwnerReferences.Add(reference);
                 return true;
             }
 
-            var existingRef = ownerReferences.Where(o => o.Uid == reference.Uid).FirstOrDefault();
+            var existingRef = objectMeta.OwnerReferences.Where(o => o.Uid == reference.Uid).FirstOrDefault();
 
             if (!existingRef.JsonEquals(reference))
             {
-                ownerReferences = ownerReferences.Where(o => o.Uid != reference.Uid).ToList();
-                ownerReferences.Add(reference);
+                objectMeta.OwnerReferences = objectMeta.OwnerReferences.Where(o => o.Uid != reference.Uid).ToList();
+                objectMeta.OwnerReferences.Add(reference);
                 return true;
             }
 
@@ -84,7 +88,7 @@ namespace GarnetOperator
         /// <returns>The label selector string.</returns>
         public static string ToLabelSelector(this Dictionary<string, string> labels)
         {
-            if (labels.Count == 0)
+            if (labels == null || labels.Count == 0)
             {
                 return string.Empty;
             }
@@ -167,10 +171,9 @@ namespace GarnetOperator
 
             }
 
-            resource.Status.Cluster.Nodes.Add(node);
+            resource.Status.Cluster.Nodes.Add(node.PodUid, node);
 
-
-            patch.Add(r => r.Status.Cluster.Nodes, node);
+            patch.Replace(r => r.Status.Cluster.Nodes, resource.Status.Cluster.Nodes);
 
             await k8s.CustomObjects.PatchNamespacedCustomObjectStatusAsync<V1alpha1GarnetCluster>(
                 patch: OperatorHelper.ToV1Patch(patch),
@@ -183,14 +186,7 @@ namespace GarnetOperator
         {
             var patch = OperatorHelper.CreatePatch<V1alpha1GarnetCluster>();
 
-            var remove = resource.Status.Cluster.Nodes.Where(n => n.Id == node.Id).FirstOrDefault();
-
-            if (remove == null)
-            {
-                return;
-            }
-
-            resource.Status.Cluster.Nodes.Remove(remove);
+            resource.Status.Cluster.TryRemoveNode(node.PodUid);
 
             patch.Replace(r => r.Status.Cluster.Nodes, resource.Status.Cluster.Nodes);
 
@@ -198,6 +194,11 @@ namespace GarnetOperator
                 patch: OperatorHelper.ToV1Patch(patch),
                 name: resource.Name(),
                 namespaceParameter: resource.Namespace());
+        }
+
+        public static string ToPatchString(this string value)
+        {
+            return value.Replace("/", "~1");
         }
     }
 }

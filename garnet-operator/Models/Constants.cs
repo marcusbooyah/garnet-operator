@@ -1,8 +1,9 @@
-﻿namespace GarnetOperator
+namespace GarnetOperator
 {
     public static class Constants
     {
         public const string OperatorName = "garnet-operator";
+        public const string KubernetesGroup = "garnet.k8soperator.io";
         public const string GarnetContainer = "garnet-node";
         public static class Conditions
         {
@@ -35,9 +36,15 @@
             public const string RedisName = "redis";
         }
 
-        public static class Annotations
+        public static class Labels
         {
             public const string ManagedByKey = "app.kubernetes.io/managed-by";
+            public const string ClusterId = $"{Constants.KubernetesGroup}/cluster-id";
+        }
+
+        public static class Annotations
+        {
+            public const string NodeRole = $"{Constants.KubernetesGroup}/role";
         }
     }
 }

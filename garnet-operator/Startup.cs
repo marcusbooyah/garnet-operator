@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Builder;
+using GarnetOperator.Util;
+
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -42,6 +44,7 @@ namespace GarnetOperator
             services.AddSingleton<ILoggerFactory>(loggerFactory);
             services.AddLogging();
             services.AddKubernetesOperator();
+            services.AddSingleton<GarnetHelper>();
 
             if (NeonHelper.IsDevWorkstation)
             {

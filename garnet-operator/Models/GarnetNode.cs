@@ -7,6 +7,8 @@ namespace GarnetOperator.Models
     public class GarnetNode
     {
         public string Id { get; set; }
+
+        [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumMemberConverter))]
         public GarnetRole Role { get; set; }
 
         public string Zone { get; set; }
@@ -20,7 +22,8 @@ namespace GarnetOperator.Models
         public string PrimaryId { get; set; }
 
         public string PodName { get; set; }
-
-        public V1Pod Pod { get; set; }
+        public string PodUid { get; set; }
+        public string NodeName { get; set; }
+        public string Namespace { get; set; }
     }
 }

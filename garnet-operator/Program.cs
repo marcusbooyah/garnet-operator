@@ -28,13 +28,13 @@ namespace GarnetOperator
                .CreateDefaultBuilder()
                .ConfigureOperator(settings =>
                {
-                   settings.AssemblyScanningEnabled = false;
-                   settings.Name                    = Constants.OperatorName;
-                   settings.Port                    = listenPort;
-
+                   settings.AssemblyScanningEnabled  = false;
+                   settings.Name                     = Constants.OperatorName;
+                   settings.Port                     = listenPort;
                    if (NeonHelper.IsDevWorkstation)
                    {
-                       settings.PodNamespace = "garnet";
+                       settings.PodNamespace             = "garnet";
+                       settings.UserImpersonationEnabled = false;
                    }
                })
                .UseStartup<OperatorStartup>();
