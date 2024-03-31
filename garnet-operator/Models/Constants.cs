@@ -205,5 +205,10 @@ namespace GarnetOperator
             /// </summary>
             public const string DefaultChannel = "";
         }
+
+        public class Redis
+        {
+            public const int Slots = 16384;
+        }
     }
 }

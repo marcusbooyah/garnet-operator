@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using FluentAssertions;
+
 using GarnetOperator;
 using GarnetOperator.Models;
 
@@ -50,6 +52,27 @@ namespace Test_GarnetOperator
             fixture.AddResource(cluster);
 
             await controller.ReconcileAsync(cluster);
+        }
+
+        [Fact]
+        public void GetSlotCount()
+        {
+            var node = new GarnetNode();
+
+            node.Slots = new List<int> { 1, 3, 5, 5, 7, 9 };
+
+            node.NumSlots().Should().Be(7);
+        }
+
+        [Fact]
+        public void GetSlots()
+        {
+            var node = new GarnetNode();
+
+            node.Slots = new List<int> { 1, 3, 5, 5, 7, 9 };
+
+            node.GetSlots().Count.Should().Be(7);
+            node.GetSlots().SequenceEqual(new List<int>() { 1, 2, 3, 5, 7, 8, 9 } ).Should().BeTrue();
         }
     }
 }

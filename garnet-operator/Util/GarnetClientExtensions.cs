@@ -35,11 +35,21 @@ namespace GarnetOperator
         /// <returns>The result of the FORGET command.</returns>
         public static async Task<string> ForgetAsync(this GarnetClient client, string id)
         {
-            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["FORGET", id]);
+            try
+            {
+                var result = await client.ExecuteForStringResultAsync("CLUSTER", ["FORGET", id]);
 
-            EnsureSuccess(result);
+                return result;
+            }
+            catch (Exception e)
+            {
+                if (e.Message.StartsWith("ERR I don't know about node"))
+                {
+                    return string.Empty;
+                }
+            }
 
-            return result;
+            return string.Empty;
         }
 
         /// <summary>

@@ -947,6 +947,7 @@ spec:
                           - handshake
                           - none
                           - leaving
+                          - promoting
                           type: string
                         zone:
                           type: string
@@ -957,7 +958,8 @@ spec:
                           type: integer
                         slots:
                           items:
-                            type: string
+                            format: int32
+                            type: integer
                           type: array
                         primaryId:
                           type: string

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,8 +9,6 @@ using Garnet.client;
 
 using GarnetOperator.Models;
 using GarnetOperator.Util;
-
-using Grpc.Core;
 
 using k8s;
 using k8s.Autorest;
@@ -21,6 +20,7 @@ using Neon.Common;
 using Neon.Diagnostics;
 using Neon.K8s;
 using Neon.K8s.Core;
+using Neon.K8s.Resources.Istio;
 using Neon.Operator;
 using Neon.Operator.Attributes;
 using Neon.Operator.Controllers;
@@ -53,7 +53,10 @@ namespace GarnetOperator
         private Dictionary<string, V1Pod> clusterPods;
         private IEnumerable<GarnetNode> primaries => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.Primary);
         private IEnumerable<GarnetNode> replicas => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.Replica);
+        private IEnumerable<GarnetNode> leaving => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.Leaving);
+        private IEnumerable<GarnetNode> promoting => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.Promoting);
         private IEnumerable<GarnetNode> orphans => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.None);
+        private IEnumerable<GarnetNode> allNodes => cluster.Status.Cluster.Nodes.Values;
 
         private Cluster newCluster;
         private TimeSpan? requeueDelay = null;
@@ -87,10 +90,11 @@ namespace GarnetOperator
 
             logger?.LogInformationEx(() => $"Reconciling: {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
 
+            var shards = await garnetHelper.GetShardsAsync(primaries.First());
+
             await InitializeStatusAsync();
             clusterPods = await GetClusterPodsAsync();
 
-            
 
             var tasks = new List<Task>()
             {
@@ -164,6 +168,25 @@ namespace GarnetOperator
             return ResourceControllerResult.Ok();
         }
 
+        internal async Task RebalanceClusterAsync()
+        {
+            await SyncContext.Clear;
+
+            using var activity = TraceContext.ActivitySource?.StartActivity();
+
+
+            var numSlices    = primaries.Count();
+            var slotsPerNode = Constants.Redis.Slots / numSlices;
+
+            foreach (var primary in primaries)
+            {
+                if (primary.NumSlots() > slotsPerNode)
+                {
+
+                }
+            }
+        }
+
         internal async Task ConfigureClusterAsync()
         {
             await SyncContext.Clear;
@@ -192,18 +215,19 @@ namespace GarnetOperator
             while (primaries.Count() < cluster.Spec.NumberOfPrimaries)
             {
                 GarnetNode pod = null;
-                if (orphans.Any())
+                if (promoting.Any())
                 {
-                    pod  = orphans.First();
-                    var resp = await clusterClient.MeetAsync(pod.Address);
+                    pod = promoting.First();
+
+                    var replicaClient = await garnetHelper.CreateClientAsync(pod);
+                    var resp          = await replicaClient.DetachReplicaAsync();
+
+                    await clusterClient.MeetAsync(pod.Address, Constants.Ports.Redis);
                 }
                 else
                 {
-                    pod = replicas.First();
-                    var replicaClient = await garnetHelper.CreateClientAsync(pod);
-                    var resp = await replicaClient.DetachReplicaAsync();
-
-                    await clusterClient.MeetAsync(pod.Address, Constants.Ports.Redis);
+                    pod = orphans.First();
+                    var resp = await clusterClient.MeetAsync(pod.Address);
                 }
 
                 if (pod == null)
@@ -281,38 +305,101 @@ namespace GarnetOperator
                 reason:  Constants.Conditions.ScalingDownReason,
                 message: Constants.Conditions.ScalingDownMessage);
 
-            var primaryPods       = cluster.Status.Cluster.GetPrimaryNodes();
-            var primariesToDelete = primaryPods.Count - cluster.Spec.NumberOfPrimaries;
-            var primaryHosts      = primaryPods.Select(p => p.NodeName).ToHashSet();
+            var primariesToDelete = primaries.Count() - cluster.Spec.NumberOfPrimaries;
+            var primaryHosts      = primaries.Select(p => p.NodeName).ToHashSet();
             var podsPerHost       = primariesToDelete / primaryHosts.Count();
 
-            foreach (var host in primaryHosts)
+            while (primaries.Count() - cluster.Spec.NumberOfPrimaries > 0)
             {
-                var hostPods = primaryPods.Where(p => p.NodeName == host).SelectRandom(podsPerHost);
+                var pod = primaries.GroupBy(
+                    p => p.NodeName,
+                    p => p,
+                    (key, g) => new
+                    {
+                        Node  = key,
+                        Pods  = g.ToList(),
+                        Count = g.Count()
+                    })
+                    .OrderByDescending(r => r.Count)
+                    .FirstOrDefault()
+                    .Pods
+                    .FirstOrDefault();
 
-                foreach (var pod in hostPods)
-                {
-                    await k8s.CoreV1.DeleteNamespacedPodAsync(pod.PodName, cluster.Metadata.NamespaceProperty);
-                }
+                cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Leaving;
+
+                await SaveStatusAsync();
             }
 
-            var replicaNodes     = cluster.Status.Cluster.GetReplicaNodes();
-            var replicasToDelete = replicaNodes.Count - cluster.Spec.ReplicationFactor;
-            var replicaHosts     = primaryPods.Select(p => p.NodeName).ToHashSet();
-            podsPerHost          = replicasToDelete / replicaHosts.Count();
+            var numReplicas     = cluster.Spec.ReplicationFactor * cluster.Spec.NumberOfPrimaries;
+            var numPodsRequired = NumPodsRequired();
 
-            foreach (var host in replicaHosts)
+            while (replicas.Where(n => n.Role != GarnetRole.Leaving).Count() > numReplicas)
             {
-                var hostPods = replicaNodes.Where(p => p.NodeName == host).SelectRandom(podsPerHost);
+                var pod = replicas
+                    .Where(n => n.Role != GarnetRole.Leaving)
+                    .GroupBy(
+                    p => p.NodeName,
+                    p => p,
+                    (key, g) => new
+                    {
+                        Node  = key,
+                        Pods  = g.ToList(),
+                        Count = g.Count()
+                    })
+                    .OrderByDescending(r => r.Count)
+                    .FirstOrDefault()
+                    .Pods
+                    .FirstOrDefault();
 
-                foreach (var pod in hostPods)
+                if (allNodes.Where(n => n.Role != GarnetRole.Leaving).Count() > numPodsRequired)
                 {
-                    await k8s.CoreV1.DeleteNamespacedPodAsync(pod.PodName, cluster.Metadata.NamespaceProperty);
-                    cluster.Status.Cluster.TryRemoveNode(pod.PodUid);
+                    cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Leaving;
                 }
+                else
+                {
+                    cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Promoting;
+                }
+
+                await SaveStatusAsync();
             }
+
+            await RemoveLeavingAsync();
         }
 
+        internal async Task RemoveLeavingAsync()
+        {
+            await SyncContext.Clear;
+
+            using var activity = TraceContext.ActivitySource?.StartActivity();
+
+            foreach (var leavingNode in leaving)
+            {
+                foreach (var clusterNode in allNodes.Where(p => p.PodUid != leavingNode.PodUid))
+                {
+                    var client = await garnetHelper.CreateClientAsync(clusterNode);
+
+                    await client.ForgetAsync(leavingNode.Id);
+                }
+
+                try
+                {
+                    await k8s.CoreV1.DeleteNamespacedPodAsync(leavingNode.PodName, leavingNode.Namespace);
+                }
+                catch (HttpOperationException e) when (e.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    logger?.LogInformationEx(() => "Pod has alraedy been deleted");
+                }
+                catch (Exception e)
+                {
+                    logger?.LogErrorEx(e);
+                    continue;
+                }
+
+                cluster.Status.Cluster.TryRemoveNode(leavingNode.PodUid);
+
+                await SaveStatusAsync();
+            }
+        }
 
         internal async Task DetachReplicaAsync(GarnetNode node, V1alpha1GarnetCluster resource)
         {
@@ -435,14 +522,14 @@ namespace GarnetOperator
                                 {
                                     cluster.Status.Cluster.Nodes.Add(@event.Value.Uid(), new GarnetNode()
                                     {
-                                        Address   = cluster.CreatePodAddress(@event.Value),
+                                        Address = cluster.CreatePodAddress(@event.Value),
                                         Namespace = cluster.Namespace(),
-                                        NodeName  = @event.Value.Spec.NodeName,
-                                        PodName   = @event.Value.Name(),
-                                        PodUid    = @event.Value.Uid(),
-                                        Port      = Constants.Ports.Redis,
-                                        Role      = GarnetRole.None,
-                                        Zone      = @event.Value.Spec.NodeName
+                                        NodeName = @event.Value.Spec.NodeName,
+                                        PodName = @event.Value.Name(),
+                                        PodUid = @event.Value.Uid(),
+                                        Port = Constants.Ports.Redis,
+                                        Role = GarnetRole.None,
+                                        Zone = @event.Value.Spec.NodeName
                                     });
                                 }
                                 else
@@ -532,10 +619,10 @@ namespace GarnetOperator
                 return true;
             }
 
-            if (cluster.Status.Cluster.NumberOfPods != cluster.Status.Cluster.NumberOfPodsReady)
-            {
-                return false;
-            }
+            //if (cluster.Status.Cluster.NumberOfPods != cluster.Status.Cluster.NumberOfPodsReady)
+            //{
+            //    return false;
+            //}
 
             if (clusterPods.Count() < numPodsRequired)
             {
@@ -554,10 +641,10 @@ namespace GarnetOperator
                 return false;
             }
 
-            if (cluster.Status.Cluster.NumberOfPods != cluster.Status.Cluster.NumberOfPodsReady)
-            {
-                return false;
-            }
+            //if (cluster.Status.Cluster.NumberOfPods != cluster.Status.Cluster.NumberOfPodsReady)
+            //{
+            //    return false;
+            //}
 
             if (clusterPods.Count() > numPodsRequired)
             {

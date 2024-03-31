@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
@@ -86,6 +90,7 @@ namespace GarnetOperator.Util
             string podName)
         {
             await SyncContext.Clear;
+
             var clusterHost = $"{address}.{@namespace}";
             var clusterPort = port;
 
@@ -107,6 +112,69 @@ namespace GarnetOperator.Util
             await client.ConnectAsync();
 
             return client;
+        }
+
+        public Task<string> ExecuteRedisCommandAsync(GarnetNode node, bool json, params string[] command)
+        {
+            return ExecuteRedisCommandAsync(node.Address, node.Port, node.Namespace, node.PodName, json, command);
+        }
+
+        public async Task<string> ExecuteRedisCommandAsync(
+            string address,
+            int port,
+            string @namespace,
+            string podName,
+            bool json = true,
+            params string[] command)
+        {
+            await SyncContext.Clear;
+
+            var clusterHost = $"{address}.{@namespace}";
+            var clusterPort = port;
+
+            logger?.LogInformationEx(() => $"Connecting to node: {podName} at: [{clusterHost}:{clusterPort}]");
+
+            var cmd = new List<string>();
+
+            if (NeonHelper.IsDevWorkstation)
+            {
+                cmd.Add("wsl");
+
+                var portManager = this.services.GetRequiredService<PortForwardManager>();
+
+                var localPort = NetHelper.GetUnusedTcpPort();
+                portManager.StartPodPortForward(podName, @namespace, localPort, clusterPort, localAddress: IPAddress.Parse("192.168.0.200"));
+
+                clusterHost = "192.168.0.200";
+                clusterPort = localPort;
+            }
+            cmd.Add("redis-cli");
+
+            if (json == true)
+            {
+                cmd.Add("--json");
+            };
+
+            cmd.AddRange(
+            [
+                "-h", clusterHost,
+                "-p", clusterPort.ToString()
+            ]);
+
+
+            cmd.AddRange(command);
+
+            var response = await NeonHelper.ExecuteCaptureAsync(cmd.First(), cmd.Skip(1).ToArray());
+
+            return response.OutputText;
+        }
+
+        public async Task<List<Shard>> GetShardsAsync(GarnetNode node)
+        {
+            var result = await ExecuteRedisCommandAsync(node, true, "cluster", "shards");
+
+            return JsonSerializer.Deserialize<ShardList>(result).Shards;
+
         }
     }
 }

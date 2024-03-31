@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using k8s.Models;
 
@@ -17,7 +18,7 @@ namespace GarnetOperator.Models
 
         public int Port { get; set; }
 
-        public List<string> Slots { get; set; }
+        public List<int> Slots { get; set; }
 
         public string PrimaryId { get; set; }
 
@@ -25,5 +26,30 @@ namespace GarnetOperator.Models
         public string PodUid { get; set; }
         public string NodeName { get; set; }
         public string Namespace { get; set; }
+
+        public int NumSlots()
+        {
+            var result = 0;
+
+            for (int i = 0; i < Slots.Count; i += 2)
+            {
+                result += Slots[i + 1] - Slots[i] + 1;
+            }
+
+            return result;
+        }
+
+        public List<int> GetSlots()
+        {
+            var result = new List<int>();
+
+            for (int i = 0; i < Slots.Count; i += 2)
+            {
+                result.AddRange(Enumerable.Range(Slots[i], Slots[i + 1] - Slots[i] + 1));
+            }
+
+            return result;
+        }
     }
+
 }

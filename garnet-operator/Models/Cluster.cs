@@ -70,7 +70,6 @@ namespace GarnetOperator.Models
         {
             if (Nodes.ContainsKey(uid))
             {
-
                 Nodes.Remove(uid);
             }
         }
