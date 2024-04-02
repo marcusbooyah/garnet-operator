@@ -14,6 +14,7 @@ using Neon.Collections;
 using Neon.K8s;
 using Neon.K8s.Core;
 using Neon.Operator.Util;
+using System.Threading;
 
 namespace GarnetOperator
 {
@@ -124,7 +125,8 @@ namespace GarnetOperator
             string type,
             string status,
             string reason = null,
-            string message = null)
+            string message = null,
+            CancellationToken cancellationToken = default)
         {
             var condition = new V1Condition()
             {

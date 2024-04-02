@@ -14,7 +14,7 @@
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-        <PackageReference Include="Neon.Operator.Xunit" Version="1.0.9">
+        <PackageReference Include="Neon.Operator.Xunit" Version="2.0.0-beta.0">
             <ExcludeAssets>analyzers</ExcludeAssets>
         </PackageReference>
         <PackageReference Include="xunit" Version="2.6.5" />

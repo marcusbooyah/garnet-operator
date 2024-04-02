@@ -46,7 +46,6 @@ namespace GarnetOperator
         private readonly ILogger<GarnetClusterController>         logger;
         private readonly GarnetHelper                             garnetHelper;
         
-
         private static TimeSpan RequeueDelay = TimeSpan.FromSeconds(20);
 
         private V1alpha1GarnetCluster cluster;
@@ -80,7 +79,7 @@ namespace GarnetOperator
         }
 
         /// <inheritdoc/>
-        public override async Task<ResourceControllerResult> ReconcileAsync(V1alpha1GarnetCluster resource)
+        public override async Task<ResourceControllerResult> ReconcileAsync(V1alpha1GarnetCluster resource, CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -92,26 +91,26 @@ namespace GarnetOperator
 
             var shards = await garnetHelper.GetShardsAsync(primaries.First());
 
-            await InitializeStatusAsync();
-            clusterPods = await GetClusterPodsAsync();
+            await InitializeStatusAsync(cancellationToken);
+            clusterPods = await GetClusterPodsAsync(cancellationToken);
 
 
             var tasks = new List<Task>()
             {
-                ReconcileConfigMapAsync(),
-                ReconcileServicesAsync()
+                ReconcileConfigMapAsync(cancellationToken),
+                ReconcileServicesAsync(cancellationToken)
             };
 
             await Task.WhenAll(tasks);
 
-            await ReconcileClusterAsync();
+            await ReconcileClusterAsync(cancellationToken);
 
             logger?.LogInformationEx(() => $"Reconciled: {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
 
             return ResourceControllerResult.Ok();
         }
 
-        internal async Task InitializeStatusAsync()
+        internal async Task InitializeStatusAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -131,10 +130,14 @@ namespace GarnetOperator
             };
 
             var meta = typeof(V1alpha1GarnetCluster).GetKubernetesTypeMetadata();
-            cluster = await k8s.CustomObjects.ReplaceNamespacedCustomObjectStatusAsync(cluster, cluster.Namespace());
+
+            cluster = await k8s.CustomObjects.ReplaceNamespacedCustomObjectStatusAsync(
+                @object:            cluster,
+                namespaceParameter: cluster.Namespace(),
+                cancellationToken:  cancellationToken);
         }
 
-        internal async Task<ResourceControllerResult> ReconcileClusterAsync()
+        internal async Task<ResourceControllerResult> ReconcileClusterAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -143,32 +146,33 @@ namespace GarnetOperator
             var needsMorePods = NeedsMorePods();
             var needsLessPods = NeedsLessPods();
 
-            await WaitForPodReadinessAsync();
+            await WaitForPodReadinessAsync(cancellationToken);
 
             if (needsMorePods)
             {
-                await ScaleUpAsync();
-                await WaitForPodReadinessAsync();
+                await ScaleUpAsync(cancellationToken);
+                await WaitForPodReadinessAsync(cancellationToken);
             }
             else if (needsLessPods)
             {
-                await ScaleDownAsync();
-                await WaitForPodReadinessAsync();
+                await ScaleDownAsync(cancellationToken);
+                await WaitForPodReadinessAsync(cancellationToken);
             }
 
-            await ConfigureClusterAsync();
+            await ConfigureClusterAsync(cancellationToken);
 
             await cluster.SetConditionAsync(
-                k8s:     k8s,
-                type:    Constants.Conditions.Scaling,
-                status:  Constants.Conditions.StatusFalse,
-                reason:  string.Empty,
-                message: string.Empty);
+                k8s:               k8s,
+                type:              Constants.Conditions.Scaling,
+                status:            Constants.Conditions.StatusFalse,
+                reason:            string.Empty,
+                message:           string.Empty,
+                cancellationToken: cancellationToken);
 
             return ResourceControllerResult.Ok();
         }
 
-        internal async Task RebalanceClusterAsync()
+        internal async Task RebalanceClusterAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -187,7 +191,7 @@ namespace GarnetOperator
             }
         }
 
-        internal async Task ConfigureClusterAsync()
+        internal async Task ConfigureClusterAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -207,13 +211,15 @@ namespace GarnetOperator
                 cluster.Status.Cluster.Nodes[pod.Uid()].Role                 = GarnetRole.Primary;
                 cluster.Status.Cluster.NumberOfReplicasPerPrimary[pod.Uid()] = 0;
 
-                await SaveStatusAsync();
+                await SaveStatusAsync(cancellationToken);
             }
 
             clusterClient ??= await garnetHelper.CreateClientAsync(primaries.First());
 
             while (primaries.Count() < cluster.Spec.NumberOfPrimaries)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 GarnetNode pod = null;
                 if (promoting.Any())
                 {
@@ -243,7 +249,7 @@ namespace GarnetOperator
                 cluster.Status.Cluster.Nodes[pod.PodUid].Role                 = GarnetRole.Primary;
                 cluster.Status.Cluster.NumberOfReplicasPerPrimary[pod.PodUid] = 0;
 
-                await SaveStatusAsync();
+                await SaveStatusAsync(cancellationToken);
             }
 
             var numReplicas = cluster.Spec.ReplicationFactor * cluster.Spec.NumberOfPrimaries;
@@ -272,12 +278,12 @@ namespace GarnetOperator
                     cluster.Status.Cluster.Nodes[pod.PodUid].Role                  = GarnetRole.Replica;
                     cluster.Status.Cluster.Nodes[pod.PodUid].PrimaryId             = primaryUid;
 
-                    await SaveStatusAsync();
+                    await SaveStatusAsync(cancellationToken);
                 }
             }
         }
 
-        internal async Task SaveStatusAsync()
+        internal async Task SaveStatusAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -285,25 +291,32 @@ namespace GarnetOperator
 
             var status = KubernetesHelper.JsonClone(cluster.Status);
 
-            cluster = await k8s.CustomObjects.GetNamespacedCustomObjectAsync<V1alpha1GarnetCluster>(cluster.Name(), cluster.Namespace());
+            cluster = await k8s.CustomObjects.GetNamespacedCustomObjectAsync<V1alpha1GarnetCluster>(
+                name:               cluster.Name(),
+                namespaceParameter: cluster.Namespace(),
+                cancellationToken:  cancellationToken);
 
             cluster.Status = status;
 
-            cluster = await k8s.CustomObjects.ReplaceNamespacedCustomObjectStatusAsync(cluster, cluster.Namespace());
+            cluster = await k8s.CustomObjects.ReplaceNamespacedCustomObjectStatusAsync(
+                @object:            cluster,
+                namespaceParameter: cluster.Namespace(),
+                cancellationToken:  cancellationToken);
         }
 
-        internal async Task ScaleDownAsync()
+        internal async Task ScaleDownAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
             await cluster.SetConditionAsync(
-                k8s:     k8s,
-                type:    Constants.Conditions.Scaling,
-                status:  Constants.Conditions.StatusTrue,
-                reason:  Constants.Conditions.ScalingDownReason,
-                message: Constants.Conditions.ScalingDownMessage);
+                k8s:               k8s,
+                type:              Constants.Conditions.Scaling,
+                status:            Constants.Conditions.StatusTrue,
+                reason:            Constants.Conditions.ScalingDownReason,
+                message:           Constants.Conditions.ScalingDownMessage,
+                cancellationToken: cancellationToken);
 
             var primariesToDelete = primaries.Count() - cluster.Spec.NumberOfPrimaries;
             var primaryHosts      = primaries.Select(p => p.NodeName).ToHashSet();
@@ -327,7 +340,7 @@ namespace GarnetOperator
 
                 cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Leaving;
 
-                await SaveStatusAsync();
+                await SaveStatusAsync(cancellationToken);
             }
 
             var numReplicas     = cluster.Spec.ReplicationFactor * cluster.Spec.NumberOfPrimaries;
@@ -360,13 +373,13 @@ namespace GarnetOperator
                     cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Promoting;
                 }
 
-                await SaveStatusAsync();
+                await SaveStatusAsync(cancellationToken);
             }
 
-            await RemoveLeavingAsync();
+            await RemoveLeavingAsync(cancellationToken);
         }
 
-        internal async Task RemoveLeavingAsync()
+        internal async Task RemoveLeavingAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -383,7 +396,10 @@ namespace GarnetOperator
 
                 try
                 {
-                    await k8s.CoreV1.DeleteNamespacedPodAsync(leavingNode.PodName, leavingNode.Namespace);
+                    await k8s.CoreV1.DeleteNamespacedPodAsync(
+                        name:               leavingNode.PodName,
+                        namespaceParameter: leavingNode.Namespace,
+                        cancellationToken:  cancellationToken);
                 }
                 catch (HttpOperationException e) when (e.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
@@ -397,11 +413,11 @@ namespace GarnetOperator
 
                 cluster.Status.Cluster.TryRemoveNode(leavingNode.PodUid);
 
-                await SaveStatusAsync();
+                await SaveStatusAsync(cancellationToken);
             }
         }
 
-        internal async Task DetachReplicaAsync(GarnetNode node, V1alpha1GarnetCluster resource)
+        internal async Task DetachReplicaAsync(GarnetNode node, V1alpha1GarnetCluster resource, CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -418,27 +434,29 @@ namespace GarnetOperator
 
                 await garnet.ForgetAsync(clusterNode.Id);
             }
-
         }
 
-        internal async Task ScaleUpAsync()
+        internal async Task ScaleUpAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
             await cluster.SetConditionAsync(
-                   k8s:     k8s,
-                   type:    Constants.Conditions.Scaling,
-                   status:  Constants.Conditions.StatusTrue,
-                   reason:  Constants.Conditions.ScalingUpReason,
-                   message: Constants.Conditions.ScalingUpMessage);
+                k8s:               k8s,
+                type:              Constants.Conditions.Scaling,
+                status:            Constants.Conditions.StatusTrue,
+                reason:            Constants.Conditions.ScalingUpReason,
+                message:           Constants.Conditions.ScalingUpMessage,
+                cancellationToken: cancellationToken);
 
             var numPodsNeeded = NumPodsRequired() - clusterPods?.Count() ?? 0;
             var spec = CreatePodSpec();
 
             for (int i = 0; i < numPodsNeeded; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var pod = new V1Pod().Initialize();
 
                 pod.Metadata.EnsureLabels();
@@ -456,7 +474,8 @@ namespace GarnetOperator
 
                 pod = await k8s.CoreV1.CreateNamespacedPodAsync(
                     body:               pod,
-                    namespaceParameter: cluster.Metadata.NamespaceProperty);
+                    namespaceParameter: cluster.Metadata.NamespaceProperty,
+                    cancellationToken:  cancellationToken);
 
                 clusterPods.Add(pod.Uid(), pod);
 
@@ -475,7 +494,7 @@ namespace GarnetOperator
             }
         }
 
-        internal async Task WaitForPodReadinessAsync()
+        internal async Task WaitForPodReadinessAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -522,14 +541,14 @@ namespace GarnetOperator
                                 {
                                     cluster.Status.Cluster.Nodes.Add(@event.Value.Uid(), new GarnetNode()
                                     {
-                                        Address = cluster.CreatePodAddress(@event.Value),
+                                        Address   = cluster.CreatePodAddress(@event.Value),
                                         Namespace = cluster.Namespace(),
-                                        NodeName = @event.Value.Spec.NodeName,
-                                        PodName = @event.Value.Name(),
-                                        PodUid = @event.Value.Uid(),
-                                        Port = Constants.Ports.Redis,
-                                        Role = GarnetRole.None,
-                                        Zone = @event.Value.Spec.NodeName
+                                        NodeName  = @event.Value.Spec.NodeName,
+                                        PodName   = @event.Value.Name(),
+                                        PodUid    = @event.Value.Uid(),
+                                        Port      = Constants.Ports.Redis,
+                                        Role      = GarnetRole.None,
+                                        Zone      = @event.Value.Spec.NodeName
                                     });
                                 }
                                 else
@@ -564,7 +583,7 @@ namespace GarnetOperator
                 logger?.LogErrorEx(e);
             }
 
-            await SaveStatusAsync();
+            await SaveStatusAsync(cancellationToken);
         }
         
         internal V1PodSpec CreatePodSpec()
@@ -659,14 +678,16 @@ namespace GarnetOperator
             return cluster.Spec.NumberOfPrimaries * (1 + cluster.Spec.ReplicationFactor);
         }
 
-        internal async Task<Dictionary<string, V1Pod>> GetClusterPodsAsync()
+        internal async Task<Dictionary<string, V1Pod>> GetClusterPodsAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
-            var pods = await k8s.CoreV1.ListNamespacedPodAsync(namespaceParameter: cluster.Metadata.NamespaceProperty,
-                    labelSelector: cluster.Spec.AdditionalLabels.ToLabelSelector());
+            var pods = await k8s.CoreV1.ListNamespacedPodAsync(
+                namespaceParameter: cluster.Metadata.NamespaceProperty,
+                labelSelector:      cluster.Spec.AdditionalLabels.ToLabelSelector(),
+                cancellationToken:  cancellationToken);
 
             var result = new Dictionary<string, V1Pod>();
             foreach (var pod in pods)
@@ -677,7 +698,7 @@ namespace GarnetOperator
             return result;
         }
 
-        internal async Task ReconcileConfigMapAsync()
+        internal async Task ReconcileConfigMapAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -687,7 +708,7 @@ namespace GarnetOperator
             logger?.LogInformationEx(() => $"Reconciled ConfigMap for {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
         }
 
-        internal async Task ReconcileServicesAsync()
+        internal async Task ReconcileServicesAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -695,13 +716,20 @@ namespace GarnetOperator
 
             logger?.LogInformationEx(() => $"Reconciling Services for {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
 
-            await ReconcileServiceAsync(cluster.Spec.ServiceName ?? cluster.Name(), false);
-            await ReconcileServiceAsync((cluster.Spec.ServiceName ?? cluster.Name()) + "-headless", true);
+            await ReconcileServiceAsync(
+                serviceName:       cluster.Spec.ServiceName ?? cluster.Name(),
+                headless:          false,
+                cancellationToken: cancellationToken);
+
+            await ReconcileServiceAsync(
+                serviceName:       (cluster.Spec.ServiceName ?? cluster.Name()) + "-headless",
+                headless:          true,
+                cancellationToken: cancellationToken);
 
             logger?.LogInformationEx(() => $"Reconciled Services for {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
         }
 
-        internal async Task ReconcileServiceAsync(string serviceName, bool headless)
+        internal async Task ReconcileServiceAsync(string serviceName, bool headless, CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -712,7 +740,11 @@ namespace GarnetOperator
             var exists = false;
             try
             {
-                existingService = await k8s.CoreV1.ReadNamespacedServiceAsync(serviceName, cluster.Metadata.NamespaceProperty);
+                existingService = await k8s.CoreV1.ReadNamespacedServiceAsync(
+                    name:               serviceName,
+                    namespaceParameter: cluster.Metadata.NamespaceProperty,
+                    cancellationToken:  cancellationToken);
+
                 exists          = true;
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -767,7 +799,8 @@ namespace GarnetOperator
             {
                 await k8s.CoreV1.CreateNamespacedServiceAsync(
                     body:               service,
-                    namespaceParameter: cluster.Metadata.NamespaceProperty);
+                    namespaceParameter: cluster.Metadata.NamespaceProperty,
+                    cancellationToken:  cancellationToken);
                 return;
             }
 
@@ -776,7 +809,8 @@ namespace GarnetOperator
                 await k8s.CoreV1.ReplaceNamespacedServiceAsync(
                     body:               service,
                     name:               serviceName,
-                    namespaceParameter: cluster.Metadata.NamespaceProperty);
+                    namespaceParameter: cluster.Metadata.NamespaceProperty,
+                    cancellationToken:  cancellationToken);
 
                 return;
             }

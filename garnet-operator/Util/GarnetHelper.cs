@@ -30,10 +30,11 @@ namespace GarnetOperator.Util
     /// </summary>
     public class GarnetHelper
     {
-        private readonly IKubernetes           k8s;
-        private readonly ILogger<GarnetHelper> logger;
-        private readonly ILoggerFactory        loggerFactory;
-        private readonly IServiceProvider      services;
+        private readonly IKubernetes                      k8s;
+        private readonly ILogger<GarnetHelper>            logger;
+        private readonly ILoggerFactory                   loggerFactory;
+        private readonly IServiceProvider                 services;
+        private readonly Dictionary<string, GarnetClient> clients;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="GarnetHelper"/> class.
@@ -52,6 +53,7 @@ namespace GarnetOperator.Util
             this.logger        = logger;
             this.loggerFactory = loggerFactory;
             this.services      = services;
+            this.clients       = new Dictionary<string, GarnetClient>();
         }
 
         /// <summary>
@@ -85,11 +87,23 @@ namespace GarnetOperator.Util
         /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
         public async Task<GarnetClient> CreateClientAsync(
             string address,
-            int port,
+            int    port,
             string @namespace,
             string podName)
         {
             await SyncContext.Clear;
+
+            var key = CreateKey(podName, @namespace);
+
+            if (clients.TryGetValue(key, out var cachedClient))
+            {
+                if (!cachedClient.IsConnected)
+                {
+                    await cachedClient.ConnectAsync();
+                }
+
+                return cachedClient;
+            }
 
             var clusterHost = $"{address}.{@namespace}";
             var clusterPort = port;
@@ -108,6 +122,11 @@ namespace GarnetOperator.Util
             }
 
             var client = new GarnetClient(clusterHost, clusterPort, logger: logger);
+
+            if (!NeonHelper.IsDevWorkstation)
+            {
+                clients.Add(key, client);
+            }
 
             await client.ConnectAsync();
 
@@ -175,6 +194,11 @@ namespace GarnetOperator.Util
 
             return JsonSerializer.Deserialize<ShardList>(result).Shards;
 
+        }
+
+        private static string CreateKey(string podName, string podNamespace)
+        {
+            return $"{podName}.{podNamespace}";
         }
     }
 }
