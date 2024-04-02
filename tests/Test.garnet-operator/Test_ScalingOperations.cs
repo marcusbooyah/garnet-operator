@@ -74,5 +74,59 @@ namespace Test_GarnetOperator
             node.GetSlots().Count.Should().Be(7);
             node.GetSlots().SequenceEqual(new List<int>() { 1, 2, 3, 5, 7, 8, 9 } ).Should().BeTrue();
         }
+
+        [Fact]
+        public void CalculateSlots()
+        {
+            var nodes = new List<GarnetNode>()
+            {
+                new GarnetNode(),
+                new GarnetNode(),
+                new GarnetNode(),
+            };
+            var numSlices    = nodes.Count;
+            var slotsPerNode = Constants.Redis.Slots / numSlices;
+
+            var sb = new StringBuilder();
+
+            for (int i = 0; i < numSlices; i++)
+            {
+                var start = (i) * slotsPerNode;
+                var end   = (1 + i) * slotsPerNode;
+
+                if (i > 0)
+                {
+                    start++;
+                }
+
+                if (i == numSlices - 1)
+                {
+                    end = Constants.Redis.Slots - 1;
+                }
+
+                nodes[i].Slots = new List<int> { start, end };
+
+                sb.AppendLine($"{start} {end}");
+            }
+
+            var slots = sb.ToString();
+            Assert.True(true);
+        }
+
+        [Fact]
+        public void GetSlotRanges()
+        {
+            var migration = new SlotMigration()
+            {
+                FromId = "foo",
+                ToId   = "bar",
+                Slots = new HashSet<int>()
+                {
+                    1,2,3,4,5,6,7,15,16,17,18,50,51,52,53,100
+                }
+            };
+
+            var ranges = migration.GetSlotRanges();
+        }
     }
 }

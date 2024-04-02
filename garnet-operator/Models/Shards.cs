@@ -1,12 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-using System;
-using System.Collections.Generic;
-using k8s.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -29,10 +22,11 @@ namespace GarnetOperator.Models
         public string Id { get; set; }
         public int Port { get; set; }
         public string Address { get; set; }
-        public string Role { get; set; }
+        public GarnetRole Role { get; set; }
         public int ReplicationOffset { get; set; }
         public string Health { get; set; }
     }
+
 
     public sealed class ShardConverter : JsonConverter<ShardList>
     {
@@ -86,7 +80,7 @@ namespace GarnetOperator.Models
                     node.Address = reader.GetString();
                     reader.Read();
                     reader.Read();
-                    node.Role = reader.GetString();
+                    node.Role = RoleFromString(reader.GetString());
                     reader.Read();
                     reader.Read();
                     node.ReplicationOffset = reader.GetInt32();
@@ -114,6 +108,24 @@ namespace GarnetOperator.Models
         public override void Write(Utf8JsonWriter writer, ShardList value, JsonSerializerOptions options)
         {
             throw new NotImplementedException();
+        }
+
+        public static GarnetRole RoleFromString(string role)
+        {
+            switch (role)
+            {
+                case "PRIMARY":
+
+                    return GarnetRole.Primary;
+
+                case "REPLICA":
+
+                    return GarnetRole.Replica;
+
+                default:
+
+                    throw new ArgumentException("Unknown role");
+            }
         }
     }
 }

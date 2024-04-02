@@ -89,11 +89,10 @@ namespace GarnetOperator
 
             logger?.LogInformationEx(() => $"Reconciling: {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
 
-            var shards = await garnetHelper.GetShardsAsync(primaries.First());
-
             await InitializeStatusAsync(cancellationToken);
             clusterPods = await GetClusterPodsAsync(cancellationToken);
 
+            await GetShardsAsync(cancellationToken);
 
             var tasks = new List<Task>()
             {
@@ -113,6 +112,8 @@ namespace GarnetOperator
         internal async Task InitializeStatusAsync(CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
+
+            using var activity = TraceContext.ActivitySource?.StartActivity();
 
             if (cluster.Status != null)
             {
@@ -135,6 +136,33 @@ namespace GarnetOperator
                 @object:            cluster,
                 namespaceParameter: cluster.Namespace(),
                 cancellationToken:  cancellationToken);
+        }
+
+
+        internal async Task GetShardsAsync(CancellationToken cancellationToken = default)
+        {
+            await SyncContext.Clear;
+
+            using var activity = TraceContext.ActivitySource?.StartActivity();
+
+            var shards = await garnetHelper.GetShardsAsync(primaries.First());
+
+            foreach (var shard in shards)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var node = shard.Nodes.Where(n => n.Role == GarnetRole.Primary).FirstOrDefault();
+
+                if (node == null)
+                {
+                    continue;
+                }
+
+                cluster.Status.Cluster.Nodes.Where(n => n.Value.Id == node.Id).FirstOrDefault().Value.Slots = shard.Slots;
+
+                await SaveStatusAsync(cancellationToken);
+            }
+
         }
 
         internal async Task<ResourceControllerResult> ReconcileClusterAsync(CancellationToken cancellationToken = default)
@@ -178,16 +206,59 @@ namespace GarnetOperator
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
+            var newNodes = KubernetesHelper.JsonClone(cluster.Status.Cluster.Nodes.Values.ToList());
 
-            var numSlices    = primaries.Count();
+            var numSlices    = newNodes.Count();
             var slotsPerNode = Constants.Redis.Slots / numSlices;
 
-            foreach (var primary in primaries)
-            {
-                if (primary.NumSlots() > slotsPerNode)
-                {
 
+            for (int i = 0; i < numSlices; i++)
+            {
+                var start = (i) * slotsPerNode;
+                var end   = (1 + i) * slotsPerNode;
+
+                if (i == numSlices - 1)
+                {
+                    end = Constants.Redis.Slots - 1;
                 }
+
+                newNodes[i].Slots = new List<int> { start, end };
+            }
+
+            var slotsToMigrate = new Dictionary<string, Dictionary<string, SlotMigration>>();
+
+            foreach (var node in newNodes)
+            {
+                foreach (var slot in node.GetSlots())
+                {
+                    if (slot >= node.Slots.First() && slot <= node.Slots.Last())
+                    {
+                        continue;
+                    }
+
+                    var toId = newNodes.Where(n => slot >= n.Slots.First() && slot <= n.Slots.Last()).FirstOrDefault()?.Id;
+
+                    slotsToMigrate[node.Id] ??= new Dictionary<string, SlotMigration>();
+
+                    if (slotsToMigrate[node.Id].ContainsKey(toId))
+                    {
+                        slotsToMigrate[node.Id][toId] = new SlotMigration()
+                        {
+                            FromId = node.Id,
+                            ToId = toId,
+                            Slots = new HashSet<int>()
+                        };
+                    }
+
+                    slotsToMigrate[node.Id][toId].Slots.Add(slot);
+                }
+            }
+
+            foreach (var batch in slotsToMigrate)
+            {
+                var client = await garnetHelper.CreateClientAsync(newNodes.Where(n => n.Id == batch.Key).First());
+
+                
             }
         }
 

@@ -133,11 +133,28 @@ namespace GarnetOperator.Util
             return client;
         }
 
+        /// <summary>
+        /// Executes a Redis command asynchronously using the specified GarnetNode.
+        /// </summary>
+        /// <param name="node">The GarnetNode containing the connection details.</param>
+        /// <param name="json">A flag indicating whether the command should return the result in JSON format.</param>
+        /// <param name="command">The Redis command to execute.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the Redis command result.</returns>
         public Task<string> ExecuteRedisCommandAsync(GarnetNode node, bool json, params string[] command)
         {
             return ExecuteRedisCommandAsync(node.Address, node.Port, node.Namespace, node.PodName, json, command);
         }
 
+        /// <summary>
+        /// Executes a Redis command asynchronously using the specified address, port, namespace, pod name, and command.
+        /// </summary>
+        /// <param name="address">The address of the Garnet node.</param>
+        /// <param name="port">The port number.</param>
+        /// <param name="namespace">The namespace of the pod.</param>
+        /// <param name="podName">The name of the pod.</param>
+        /// <param name="json">A flag indicating whether the command should return the result in JSON format.</param>
+        /// <param name="command">The Redis command to execute.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the Redis command result.</returns>
         public async Task<string> ExecuteRedisCommandAsync(
             string address,
             int port,
@@ -188,6 +205,11 @@ namespace GarnetOperator.Util
             return response.OutputText;
         }
 
+        /// <summary>
+        /// Retrieves the list of shards asynchronously using the specified GarnetNode.
+        /// </summary>
+        /// <param name="node">The GarnetNode containing the connection details.</param>
+        /// <returns>A task representing the asynchronous operation. The task result contains the list of shards.</returns>
         public async Task<List<Shard>> GetShardsAsync(GarnetNode node)
         {
             var result = await ExecuteRedisCommandAsync(node, true, "cluster", "shards");
