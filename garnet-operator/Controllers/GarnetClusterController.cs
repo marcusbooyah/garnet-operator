@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,14 +19,13 @@ using Neon.Common;
 using Neon.Diagnostics;
 using Neon.K8s;
 using Neon.K8s.Core;
-using Neon.K8s.Resources.Istio;
 using Neon.Operator;
 using Neon.Operator.Attributes;
 using Neon.Operator.Controllers;
 using Neon.Operator.Finalizers;
 using Neon.Operator.Rbac;
-using Neon.Operator.Util;
 using Neon.Tasks;
+using OpenTelemetry;
 
 namespace GarnetOperator
 {
@@ -56,6 +54,7 @@ namespace GarnetOperator
         private IEnumerable<GarnetNode> promoting => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.Promoting);
         private IEnumerable<GarnetNode> orphans => cluster.Status.Cluster.Nodes.Values.Where(n => n.Role == GarnetRole.None);
         private IEnumerable<GarnetNode> allNodes => cluster.Status.Cluster.Nodes.Values;
+        private string headlessServiceName => (cluster.Spec.ServiceName ?? cluster.Name()) + "-headless";
 
         private Cluster newCluster;
         private TimeSpan? requeueDelay = null;
@@ -92,8 +91,6 @@ namespace GarnetOperator
             await InitializeStatusAsync(cancellationToken);
             clusterPods = await GetClusterPodsAsync(cancellationToken);
 
-            await GetShardsAsync(cancellationToken);
-
             var tasks = new List<Task>()
             {
                 ReconcileConfigMapAsync(cancellationToken),
@@ -103,6 +100,10 @@ namespace GarnetOperator
             await Task.WhenAll(tasks);
 
             await ReconcileClusterAsync(cancellationToken);
+
+            await GetShardsAsync(cancellationToken);
+
+            await RebalanceClusterAsync(cancellationToken);
 
             logger?.LogInformationEx(() => $"Reconciled: {V1alpha1GarnetCluster.KubeKind}/{cluster.Name()}");
 
@@ -206,11 +207,10 @@ namespace GarnetOperator
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
-            var newNodes = KubernetesHelper.JsonClone(cluster.Status.Cluster.Nodes.Values.ToList());
+            var newNodes = KubernetesHelper.JsonClone(primaries.ToList());
 
             var numSlices    = newNodes.Count();
             var slotsPerNode = Constants.Redis.Slots / numSlices;
-
 
             for (int i = 0; i < numSlices; i++)
             {
@@ -229,6 +229,19 @@ namespace GarnetOperator
 
             foreach (var node in newNodes)
             {
+                if (cluster.Status.Cluster.Nodes.Values.Where(n => n.Id == node.Id).FirstOrDefault()?.Slots?.IsEmpty() == true)
+                {
+                    var client = await garnetHelper.CreateClientAsync(node);
+
+                    await client.AddSlotsRangeAsync(
+                        address: node.Address,
+                        port:    node.Port,
+                        start:   node.Slots[0],
+                        end:     node.Slots[1]);
+
+                    continue;
+                }
+
                 foreach (var slot in node.GetSlots())
                 {
                     if (slot >= node.Slots.First() && slot <= node.Slots.Last())
@@ -236,21 +249,26 @@ namespace GarnetOperator
                         continue;
                     }
 
-                    var toId = newNodes.Where(n => slot >= n.Slots.First() && slot <= n.Slots.Last()).FirstOrDefault()?.Id;
+                    var toNode = newNodes.Where(n => slot >= n.Slots.First() && slot <= n.Slots.Last()).FirstOrDefault();
+
+                    if (toNode == null)
+                    {
+                        continue;
+                    }
 
                     slotsToMigrate[node.Id] ??= new Dictionary<string, SlotMigration>();
 
-                    if (slotsToMigrate[node.Id].ContainsKey(toId))
+                    if (slotsToMigrate[node.Id].ContainsKey(toNode.Id))
                     {
-                        slotsToMigrate[node.Id][toId] = new SlotMigration()
+                        slotsToMigrate[node.Id][toNode.Id] = new SlotMigration()
                         {
                             FromId = node.Id,
-                            ToId = toId,
+                            ToNode = toNode,
                             Slots = new HashSet<int>()
                         };
                     }
 
-                    slotsToMigrate[node.Id][toId].Slots.Add(slot);
+                    slotsToMigrate[node.Id][toNode.Id].Slots.Add(slot);
                 }
             }
 
@@ -258,6 +276,19 @@ namespace GarnetOperator
             {
                 var client = await garnetHelper.CreateClientAsync(newNodes.Where(n => n.Id == batch.Key).First());
 
+                foreach (var toNode in batch.Value)
+                {
+                    foreach (var r in toNode.Value.GetSlotRanges())
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        await client.MigrateSlotsRangeAsync(
+                            address: toNode.Value.ToNode.Address,
+                            port:    toNode.Value.ToNode.Port,
+                            start:   r.Min,
+                            end:     r.Max);
+                    }
+                }
                 
             }
         }
@@ -269,23 +300,67 @@ namespace GarnetOperator
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
             GarnetClient clusterClient = null;
+
             if (primaries.IsEmpty())
             {
                 // cluster not initialized, create
+                await cluster.SetConditionAsync(
+                    k8s: k8s,
+                    type: Constants.Conditions.Initializing,
+                    status: Constants.Conditions.StatusTrue,
+                    reason: "Cluster is being initialized",
+                    message: "Cluster is being initialized",
+                    cancellationToken: cancellationToken);
+
                 var pod = clusterPods.First().Value;
 
                 clusterClient = await garnetHelper.CreateClientAsync(pod, Constants.Ports.Redis);
 
                 var id = await clusterClient.MyIdAsync();
 
+
+
                 cluster.Status.Cluster.Nodes[pod.Uid()].Id                   = id;
                 cluster.Status.Cluster.Nodes[pod.Uid()].Role                 = GarnetRole.Primary;
                 cluster.Status.Cluster.NumberOfReplicasPerPrimary[pod.Uid()] = 0;
+                cluster.Status.LastEpoch = 1;
+
+                await clusterClient.SetConfigEpochAsync(1);
 
                 await SaveStatusAsync(cancellationToken);
             }
 
             clusterClient ??= await garnetHelper.CreateClientAsync(primaries.First());
+
+            if (cluster.Status.Conditions.Any(c => c.Type == Constants.Conditions.Initializing
+                && c.Status == Constants.Conditions.StatusTrue))
+            {
+                while (promoting.Count() + primaries.Count() < cluster.Spec.NumberOfPrimaries)
+                {
+                    var pod    = orphans.First();
+                    var client = await garnetHelper.CreateClientAsync(pod);
+
+                    await client.SetConfigEpochAsync(cluster.Status.LastEpoch.Value + 1);
+
+                    cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Promoting;
+                    cluster.Status.LastEpoch++;
+
+                    await SaveStatusAsync(cancellationToken);
+                }
+
+                cluster.Status.LastEpoch = null;
+
+                await cluster.SetConditionAsync(
+                    k8s: k8s,
+                    type: Constants.Conditions.Initializing,
+                    status: Constants.Conditions.StatusFalse,
+                    reason: "Cluster is being initialized",
+                    message: "Cluster is being initialized",
+                    cancellationToken: cancellationToken);
+
+
+                await SaveStatusAsync(cancellationToken);
+            }
 
             while (primaries.Count() < cluster.Spec.NumberOfPrimaries)
             {
@@ -679,7 +754,7 @@ namespace GarnetOperator
                         [
                             "--cluster",
                             "--aof",
-                            "--bind", "0.0.0.0",
+                            "--bind", "$(POD_IP)",
                             "--port", Constants.Ports.Redis.ToString(),
                             "-i", "64m"
                         ],
@@ -689,6 +764,20 @@ namespace GarnetOperator
                                 Name = Constants.Ports.RedisName,
                                 ContainerPort = Constants.Ports.Redis,
                                 Protocol = "TCP"
+                            }
+                        ],
+                        Env =
+                        [
+                            new V1EnvVar()
+                            {
+                                Name = "POD_IP",
+                                ValueFrom = new V1EnvVarSource()
+                                {
+                                    FieldRef = new V1ObjectFieldSelector()
+                                    {
+                                        FieldPath = "status.podIP"
+                                    }
+                                }
                             }
                         ],
                         Resources = cluster.Spec.Resources,
@@ -764,6 +853,18 @@ namespace GarnetOperator
             foreach (var pod in pods)
             {
                 result[pod.Uid()] = pod;
+            }
+
+            var podIds = pods.Items.Select(p => p.Uid());
+
+            foreach (var node in cluster.Status.Cluster.Nodes)
+            {
+                if (!podIds.Contains(node.Key))
+                {
+                    cluster.Status.Cluster.Nodes.Remove(node.Key);
+
+                    await SaveStatusAsync(cancellationToken);
+                }
             }
 
             return result;

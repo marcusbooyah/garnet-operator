@@ -179,9 +179,12 @@ namespace GarnetOperator.Util
                 var portManager = this.services.GetRequiredService<PortForwardManager>();
 
                 var localPort = NetHelper.GetUnusedTcpPort();
-                portManager.StartPodPortForward(podName, @namespace, localPort, clusterPort, localAddress: IPAddress.Parse("192.168.0.200"));
+                var hostname = Dns.GetHostName();
+                var hostEntry = await Dns.GetHostEntryAsync(hostname);
+                var myIP = hostEntry.AddressList.Last().ToString();
+                portManager.StartPodPortForward(podName, @namespace, localPort, clusterPort, localAddress: IPAddress.Parse(myIP));
 
-                clusterHost = "192.168.0.200";
+                clusterHost = myIP;
                 clusterPort = localPort;
             }
             cmd.Add("redis-cli");

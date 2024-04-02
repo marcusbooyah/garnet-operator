@@ -51,6 +51,11 @@ namespace GarnetOperator
             public const string RollingUpdate = "RollingUpdate";
 
             /// <summary>
+            /// Cluster is being initialized.
+            /// </summary>
+            public const string Initializing = "Initializing";
+
+            /// <summary>
             /// The status value for true.
             /// </summary>
             public const string StatusTrue = "True";

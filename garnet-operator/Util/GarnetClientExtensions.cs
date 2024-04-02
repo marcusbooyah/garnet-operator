@@ -92,6 +92,70 @@ namespace GarnetOperator
 
             return result;
         }
+        public static async Task<string> SetConfigEpochAsync(this GarnetClient client, int epoch)
+        {
+            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["SET-CONFIG-EPOCH", epoch.ToString()]);
+
+            EnsureSuccess(result);
+
+            return result;
+        }
+
+        public static async Task<string> MigrateSlotsRangeAsync(
+            this GarnetClient client,
+            string address,
+            int port,
+            int start,
+            int end,
+            string key = null,
+            int timeout = 0,
+            int database = -1)
+        {
+            key ??= string.Empty;
+
+            var result = await client.ExecuteForStringResultAsync(
+                op: "CLUSTER",
+                args:
+                [
+                    "MIGRATE",
+                    $@"""{key}""",
+                    timeout.ToString(),
+                    database.ToString(),
+                    "SLOTSRANGE",
+                    start.ToString(),
+                    end.ToString()
+                ]);
+
+            EnsureSuccess(result);
+
+            return result;
+
+        }
+
+
+
+        public static async Task<string> AddSlotsRangeAsync(
+            this GarnetClient client,
+            string            address,
+            int               port,
+            int               start,
+            int               end)
+        {
+            var result = await client.ExecuteForStringResultAsync(
+                op: "CLUSTER",
+                args:
+                [
+                    "ADDSLOTSRANGE",
+                    start.ToString(),
+                    end.ToString()
+                ]);
+
+            EnsureSuccess(result);
+
+            return result;
+        }
+
+            // CLUSTER ADDSLOTSRANGE start-slot end-slot
 
         private static void EnsureSuccess(string value)
         {

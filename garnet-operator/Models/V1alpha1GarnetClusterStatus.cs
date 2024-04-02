@@ -12,5 +12,7 @@ namespace GarnetOperator.Models
         public List<V1Condition> Conditions { get; set; } = new List<V1Condition>();
 
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
+
+        public int? LastEpoch { get; set; }
     }
 }

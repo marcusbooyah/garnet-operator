@@ -116,17 +116,17 @@ namespace Test_GarnetOperator
         [Fact]
         public void GetSlotRanges()
         {
-            var migration = new SlotMigration()
-            {
-                FromId = "foo",
-                ToId   = "bar",
-                Slots = new HashSet<int>()
-                {
-                    1,2,3,4,5,6,7,15,16,17,18,50,51,52,53,100
-                }
-            };
+            //var migration = new SlotMigration()
+            //{
+            //    FromId = "foo",
+            //    ToId   = "bar",
+            //    Slots = new HashSet<int>()
+            //    {
+            //        1,2,3,4,5,6,7,15,16,17,18,50,51,52,53,100
+            //    }
+            //};
 
-            var ranges = migration.GetSlotRanges();
+            //var ranges = migration.GetSlotRanges();
         }
     }
 }

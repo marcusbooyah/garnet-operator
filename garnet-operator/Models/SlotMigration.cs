@@ -9,7 +9,7 @@ namespace GarnetOperator.Models
     public class SlotMigration
     {
         public string FromId { get; set; }
-        public string ToId { get; set; }
+        public GarnetNode ToNode { get; set; }
 
         public HashSet<int> Slots { get; set; }
 
