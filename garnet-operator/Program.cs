@@ -31,6 +31,7 @@ namespace GarnetOperator
                    settings.AssemblyScanningEnabled  = false;
                    settings.Name                     = Constants.OperatorName;
                    settings.Port                     = listenPort;
+
                    if (NeonHelper.IsDevWorkstation)
                    {
                        settings.PodNamespace             = "garnet";

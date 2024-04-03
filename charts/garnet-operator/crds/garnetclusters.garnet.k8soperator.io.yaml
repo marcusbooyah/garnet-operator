@@ -948,6 +948,7 @@ spec:
                           - none
                           - leaving
                           - promoting
+                          - demoting
                           type: string
                         zone:
                           type: string
@@ -971,6 +972,9 @@ spec:
                           type: string
                         namespace:
                           type: string
+                        configEpoch:
+                          format: int32
+                          type: integer
                       type: object
                     type: object
                   nodesPlacementInfo:

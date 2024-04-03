@@ -1,9 +1,10 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Garnet.client;
 
-using IdentityModel.OidcClient;
+using GarnetOperator.Models;
 
 namespace GarnetOperator
 {
@@ -18,9 +19,16 @@ namespace GarnetOperator
         /// <param name="address">The address to connect to.</param>
         /// <param name="port">The port to connect to. Defaults to Constants.Ports.Redis.</param>
         /// <returns>The result of the MEET command.</returns>
-        public static async Task<string> MeetAsync(this GarnetClient client, string address, int port = Constants.Ports.Redis)
+        public static async Task<string> MeetAsync(
+            this GarnetClient client,
+            string address,
+            int port = Constants.Ports.Redis,
+            CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["MEET", address, port.ToString()]);
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "CLUSTER",
+                args: ["MEET", address, port.ToString()],
+                token: cancellationToken);
 
             EnsureSuccess(result);
 
@@ -33,11 +41,17 @@ namespace GarnetOperator
         /// <param name="client">The Garnet client.</param>
         /// <param name="id">The ID of the node to remove.</param>
         /// <returns>The result of the FORGET command.</returns>
-        public static async Task<string> ForgetAsync(this GarnetClient client, string id)
+        public static async Task<string> ForgetAsync(
+            this GarnetClient client,
+            string id,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var result = await client.ExecuteForStringResultAsync("CLUSTER", ["FORGET", id]);
+                var result = await client.ExecuteForStringResultWithCancellationAsync(
+                    op: "CLUSTER",
+                    args: ["FORGET", id],
+                    token: cancellationToken);
 
                 return result;
             }
@@ -57,9 +71,43 @@ namespace GarnetOperator
         /// </summary>
         /// <param name="client">The Garnet client.</param>
         /// <returns>The result of the MYID command.</returns>
-        public static async Task<string> MyIdAsync(this GarnetClient client)
+        public static async Task<string> MyIdAsync(this GarnetClient client, CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["MYID"]);
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "CLUSTER",
+                args: ["MYID"],
+                token: cancellationToken);
+
+            return result;
+        }
+        public static async Task<ClusterInfo> ClusterInfoAsync(this GarnetClient client, CancellationToken cancellationToken = default)
+        {
+            var resp = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "CLUSTER",
+                args: ["INFO"],
+                token: cancellationToken);
+
+            var result = ClusterInfo.FromRespResponse(resp);
+
+            return result;
+        }
+
+        public static async Task<string> FlushAllAsync(this GarnetClient client, CancellationToken cancellationToken = default)
+        {
+            var result = await client.ExecuteForStringResultWithCancellationAsync(op: "FLUSHALL", token: cancellationToken);
+
+            return result;
+        }
+
+        public static async Task<string> ClusterResetAsync(
+            this GarnetClient client,
+            bool hard = false,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "CLUSTER",
+                args: ["RESET", hard ? "HARD" : "SOFT"],
+                token: cancellationToken);
 
             return result;
         }
@@ -70,11 +118,40 @@ namespace GarnetOperator
         /// <param name="client">The Garnet client.</param>
         /// <param name="id">The ID of the node to replicate.</param>
         /// <returns>The result of the REPLICATE command.</returns>
-        public static async Task<string> ReplicateAsync(this GarnetClient client, string id)
+        public static async Task<string> ReplicateAsync(
+            this GarnetClient client,
+            string id,
+            CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["REPLICATE", id]);
+            var success = false;
+            string result = null;
+            var tries = 0;
 
-            EnsureSuccess(result);
+            while (!success && !cancellationToken.IsCancellationRequested && tries < 10)
+            {
+                try
+                {
+                    result = await client.ExecuteForStringResultWithCancellationAsync(
+                        op: "CLUSTER",
+                        args: ["REPLICATE", id],
+                        token: cancellationToken);
+
+                    EnsureSuccess(result);
+                    success = true;
+                }
+                catch (Exception e)
+                {
+                    if (e.Message == $"ERR I don't know about node {id}.")
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+            }
+
 
             return result;
         }
@@ -84,17 +161,26 @@ namespace GarnetOperator
         /// </summary>
         /// <param name="client">The Garnet client.</param>
         /// <returns>The result of the REPLICAOF command.</returns>
-        public static async Task<string> DetachReplicaAsync(this GarnetClient client)
+        public static async Task<string> DetachReplicaAsync(this GarnetClient client, CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync("REPLICAOF", ["NO", "ONE"]);
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "REPLICAOF",
+                args: ["NO", "ONE"],
+                token: cancellationToken);
 
             EnsureSuccess(result);
 
             return result;
         }
-        public static async Task<string> SetConfigEpochAsync(this GarnetClient client, int epoch)
+        public static async Task<string> SetConfigEpochAsync(
+            this GarnetClient client,
+            int epoch,
+            CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync("CLUSTER", ["SET-CONFIG-EPOCH", epoch.ToString()]);
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "CLUSTER",
+                args: ["SET-CONFIG-EPOCH", epoch.ToString()],
+                token: cancellationToken);
 
             EnsureSuccess(result);
 
@@ -109,16 +195,15 @@ namespace GarnetOperator
             int end,
             string key = null,
             int timeout = 0,
-            int database = -1)
+            int database = -1,
+            CancellationToken cancellationToken = default)
         {
             key ??= string.Empty;
 
-            var result = await client.ExecuteForStringResultAsync(
-                op: "CLUSTER",
-                args:
-                [
-                    "MIGRATE",
-                    $@"""{key}""",
+            var argString = string.Join(" ", [
+                    address,
+                    port.ToString(),
+                    key,
                     timeout.ToString(),
                     database.ToString(),
                     "SLOTSRANGE",
@@ -126,36 +211,57 @@ namespace GarnetOperator
                     end.ToString()
                 ]);
 
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
+                op: "MIGRATE",
+                args:
+                [
+                    address,
+                    port.ToString(),
+                    key,
+                    timeout.ToString(),
+                    database.ToString(),
+                    "SLOTSRANGE",
+                    start.ToString(),
+                    end.ToString()
+                ],
+                token: cancellationToken);
+
             EnsureSuccess(result);
 
             return result;
 
         }
 
-
-
         public static async Task<string> AddSlotsRangeAsync(
             this GarnetClient client,
-            string            address,
-            int               port,
-            int               start,
-            int               end)
+            int start,
+            int end,
+            CancellationToken cancellationToken = default)
         {
-            var result = await client.ExecuteForStringResultAsync(
+            var result = await client.ExecuteForStringResultWithCancellationAsync(
                 op: "CLUSTER",
                 args:
                 [
                     "ADDSLOTSRANGE",
                     start.ToString(),
                     end.ToString()
-                ]);
+                ],
+                token: cancellationToken);
 
             EnsureSuccess(result);
 
             return result;
         }
 
-            // CLUSTER ADDSLOTSRANGE start-slot end-slot
+        public static Task<string> GetNodesAsync(
+            this GarnetClient client,
+            CancellationToken cancellationToken = default)
+        {
+            return client.ExecuteForStringResultWithCancellationAsync(
+                op:    "CLUSTER",
+                args: ["NODES"],
+                token: cancellationToken);
+        }
 
         private static void EnsureSuccess(string value)
         {

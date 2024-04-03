@@ -16,6 +16,8 @@ namespace GarnetOperator.Models
 
         public string Address { get; set; }
 
+        public string PodIp { get; set; }
+
         public int Port { get; set; }
 
         public List<int> Slots { get; set; }
@@ -26,10 +28,16 @@ namespace GarnetOperator.Models
         public string PodUid { get; set; }
         public string NodeName { get; set; }
         public string Namespace { get; set; }
+        public int ConfigEpoch { get; set; }
 
         public int NumSlots()
         {
             var result = 0;
+
+            if (Slots == null)
+            {
+                return result;
+            }
 
             for (int i = 0; i < Slots.Count; i += 2)
             {
@@ -42,6 +50,11 @@ namespace GarnetOperator.Models
         public List<int> GetSlots()
         {
             var result = new List<int>();
+
+            if (Slots == null)
+            {
+                return result;
+            }
 
             for (int i = 0; i < Slots.Count; i += 2)
             {

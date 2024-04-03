@@ -21,6 +21,9 @@ namespace GarnetOperator.Models
         Leaving,
 
         [EnumMember(Value = "promoting")]
-        Promoting
+        Promoting,
+
+        [EnumMember(Value = "demoting")]
+        Demoting
     }
 }

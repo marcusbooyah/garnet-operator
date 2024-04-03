@@ -53,7 +53,7 @@ namespace GarnetOperator
             /// <summary>
             /// Cluster is being initialized.
             /// </summary>
-            public const string Initializing = "Initializing";
+            public const string Initialized = "Initialized";
 
             /// <summary>
             /// The status value for true.
@@ -157,6 +157,16 @@ namespace GarnetOperator
             /// The label for cluster ID.
             /// </summary>
             public const string ClusterId = $"{Constants.KubernetesGroup}/cluster-id";
+
+            /// <summary>
+            /// The label for cluster name.
+            /// </summary>
+            public const string ClusterName = $"{Constants.KubernetesGroup}/cluster-name";
+
+            /// <summary>
+            /// The label for pod name.
+            /// </summary>
+            public const string PodName = $"{Constants.KubernetesGroup}/pod-name";
         }
 
         /// <summary>

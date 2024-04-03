@@ -1,0 +1,9 @@
+apiVersion: garnet.k8soperator.io/v1alpha1
+kind: GarnetCluster
+metadata:
+  name: test-cluster
+  namespace: garnet
+spec:
+  numberOfPrimaries: 1
+  replicationFactor: 4
+  zoneAwareReplication: false

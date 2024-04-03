@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
@@ -112,13 +113,48 @@ namespace GarnetOperator.Util
 
             if (NeonHelper.IsDevWorkstation)
             {
-                var portManager = this.services.GetRequiredService<PortForwardManager>();
+                V1Service npSvc = null;
+                try
+                {
+                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace);
+                }
+                catch
+                {
+                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace);
 
-                var localPort = NetHelper.GetUnusedTcpPort();
-                portManager.StartPodPortForward(podName, @namespace, localPort, clusterPort);
+                    var svc = new V1Service().Initialize();
+                    svc.Metadata.Name              = podName;
+                    svc.Metadata.NamespaceProperty = @namespace;
+                    svc.Spec                       = new V1ServiceSpec()
+                    {
+                        Type = "NodePort",
+                        Ports =
+                        [
+                            new V1ServicePort(){
+                                Name       = "redis",
+                                Protocol   = "TCP",
+                                Port       = Constants.Ports.Redis,
+                                TargetPort = Constants.Ports.Redis
+                            }
+                        ],
 
-                clusterHost = "localhost";
-                clusterPort = localPort;
+                    };
+
+                    svc.Spec.Selector = new Dictionary<string, string>();
+                    svc.Spec.Selector.Add(Constants.Labels.PodName, podName);
+
+                    svc.Metadata.SetOwnerReference(new V1OwnerReference()
+                    {
+                        ApiVersion = "garnet.k8soperator.io/v1alpha1",
+                        Kind       = "GarnetCluster",
+                        Name       = pod.GetLabel(Constants.Labels.ClusterName),
+                        Uid        = pod.GetLabel(Constants.Labels.ClusterId),
+                    });
+
+                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace);
+                }
+                clusterHost = "10.100.42.100";
+                clusterPort = npSvc.Spec.Ports.First().NodePort.Value;
             }
 
             var client = new GarnetClient(clusterHost, clusterPort, logger: logger);
@@ -176,16 +212,48 @@ namespace GarnetOperator.Util
             {
                 cmd.Add("wsl");
 
-                var portManager = this.services.GetRequiredService<PortForwardManager>();
+                V1Service npSvc = null;
+                try
+                {
+                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace);
+                }
+                catch
+                {
+                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace);
 
-                var localPort = NetHelper.GetUnusedTcpPort();
-                var hostname = Dns.GetHostName();
-                var hostEntry = await Dns.GetHostEntryAsync(hostname);
-                var myIP = hostEntry.AddressList.Last().ToString();
-                portManager.StartPodPortForward(podName, @namespace, localPort, clusterPort, localAddress: IPAddress.Parse(myIP));
+                    var svc = new V1Service().Initialize();
+                    svc.Metadata.Name = podName;
+                    svc.Metadata.NamespaceProperty = @namespace;
+                    svc.Spec = new V1ServiceSpec()
+                    {
+                        Type = "NodePort",
+                        Ports =
+                        [
+                            new V1ServicePort(){
+                                Name = "redis",
+                                Protocol = "TCP",
+                                Port = Constants.Ports.Redis,
+                                TargetPort = Constants.Ports.Redis
+                            }
+                        ],
 
-                clusterHost = myIP;
-                clusterPort = localPort;
+                    };
+
+                    svc.Spec.Selector = new Dictionary<string, string>();
+                    svc.Spec.Selector.Add(Constants.Labels.PodName, podName);
+
+                    svc.Metadata.SetOwnerReference(new V1OwnerReference()
+                    {
+                        ApiVersion = "garnet.k8soperator.io/v1alpha1",
+                        Kind       = "GarnetCluster",
+                        Name       = pod.GetLabel(Constants.Labels.ClusterName),
+                        Uid        = pod.GetLabel(Constants.Labels.ClusterId),
+                    });
+
+                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace);
+                }
+                clusterHost = "10.100.42.100";
+                clusterPort = npSvc.Spec.Ports.First().NodePort.Value;
             }
             cmd.Add("redis-cli");
 
@@ -215,10 +283,57 @@ namespace GarnetOperator.Util
         /// <returns>A task representing the asynchronous operation. The task result contains the list of shards.</returns>
         public async Task<List<Shard>> GetShardsAsync(GarnetNode node)
         {
+            await SyncContext.Clear;
+
             var result = await ExecuteRedisCommandAsync(node, true, "cluster", "shards");
 
             return JsonSerializer.Deserialize<ShardList>(result).Shards;
 
+        }
+
+        public async Task ForgetNodeAsync(GarnetNode node, IEnumerable<GarnetNode> clusterNodes, CancellationToken cancellationToken = default)
+        {
+            await SyncContext.Clear;
+
+            if (node.Id.IsNullOrEmpty())
+            {
+                var client = await CreateClientAsync(node);
+
+                node.Id = await client.MyIdAsync(cancellationToken);
+
+                if (node.Id.IsNullOrEmpty())
+                {
+                    return;
+                }
+            }
+
+            foreach (var clusterNode in clusterNodes.Where(p => p.PodUid != node.PodUid))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var client = await CreateClientAsync(clusterNode);
+
+                await client.ForgetAsync(node.Id, cancellationToken);
+            }
+        }
+
+        public async Task ForgetNodeAsync(string id, IEnumerable<GarnetNode> clusterNodes, CancellationToken cancellationToken = default)
+        {
+            await SyncContext.Clear;
+
+            if (id.IsNullOrEmpty())
+            {
+                return;
+            }
+
+            foreach (var clusterNode in clusterNodes.Where(p => p.Id != id))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var client = await CreateClientAsync(clusterNode);
+
+                await client.ForgetAsync(id, cancellationToken);
+            }
         }
 
         private static string CreateKey(string podName, string podNamespace)
