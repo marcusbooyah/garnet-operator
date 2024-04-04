@@ -48,24 +48,6 @@ namespace GarnetOperator.Models
             return Nodes.Values.Where(n => n.Role == GarnetRole.None).ToList();
         }
 
-        public Dictionary<string, GarnetNode> GetPrimaryToReplicas()
-        {
-            var result = new Dictionary<string, GarnetNode>();
-            foreach (var replica in GetReplicaNodes())
-            {
-                var nodeAdded = false;
-                foreach (var primary in GetPrimaryNodes())
-                {
-                    if (replica.PrimaryId == primary.Id)
-                    {
-                        result[primary.Id] = replica;
-                    }
-                }
-            }
-
-            return result;
-        }
-
         public void TryRemoveNode(string uid)
         {
             if (Nodes.ContainsKey(uid))

@@ -1,10 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Garnet.client;
 
 using GarnetOperator.Models;
+
+using Neon.Common;
 
 namespace GarnetOperator
 {
@@ -157,7 +161,7 @@ namespace GarnetOperator
         }
 
         /// <summary>
-        /// Sends a REPLICAOF command to the Garnet client to detach the replica.
+        /// Sends a REPLICAOF NO ONE command to the Garnet client to detach the replica.
         /// </summary>
         /// <param name="client">The Garnet client.</param>
         /// <returns>The result of the REPLICAOF command.</returns>
@@ -253,14 +257,42 @@ namespace GarnetOperator
             return result;
         }
 
-        public static Task<string> GetNodesAsync(
+        public static async Task<IEnumerable<ClusterNode>> GetNodesAsync(
             this GarnetClient client,
             CancellationToken cancellationToken = default)
         {
-            return client.ExecuteForStringResultWithCancellationAsync(
+            var resp = await client.ExecuteForStringResultWithCancellationAsync(
                 op:    "CLUSTER",
-                args: ["NODES"],
+                args:  ["NODES"],
                 token: cancellationToken);
+
+            var result = new List<ClusterNode>();
+
+            foreach (var line in resp.ToLines())
+            {
+                result.Add(ClusterNode.FromRespResponse(line));
+            }
+
+            return result;
+        }
+
+        public static async Task<ClusterNode> GetSelfAsync(
+            this GarnetClient client,
+            CancellationToken cancellationToken = default)
+        {
+            var resp = await client.ExecuteForStringResultWithCancellationAsync(
+                op:    "CLUSTER",
+                args:  ["NODES"],
+                token: cancellationToken);
+
+            var result = new List<ClusterNode>();
+
+            foreach (var line in resp.ToLines())
+            {
+                result.Add(ClusterNode.FromRespResponse(line));
+            }
+
+            return result.Where(n => n.Flags.Contains("myself")).FirstOrDefault();
         }
 
         private static void EnsureSuccess(string value)

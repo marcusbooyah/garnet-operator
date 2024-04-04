@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 
 using k8s.Models;
@@ -10,7 +11,8 @@ namespace GarnetOperator.Models
         public string Id { get; set; }
 
         [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumMemberConverter))]
-        public GarnetRole Role { get; set; }
+        [DefaultValue(GarnetRole.None)]
+        public GarnetRole Role { get; set; } = GarnetRole.None;
 
         public string Zone { get; set; }
 

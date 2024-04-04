@@ -942,10 +942,10 @@ spec:
                           type: string
                         role:
                           enum:
+                          - none
                           - primary
                           - replica
                           - handshake
-                          - none
                           - leaving
                           - promoting
                           - demoting
@@ -953,6 +953,8 @@ spec:
                         zone:
                           type: string
                         address:
+                          type: string
+                        podIp:
                           type: string
                         port:
                           format: int32

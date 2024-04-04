@@ -13,6 +13,7 @@ using Garnet.client;
 using GarnetOperator.Models;
 
 using k8s;
+using k8s.KubeConfigModels;
 using k8s.Models;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -307,7 +308,7 @@ namespace GarnetOperator.Util
                 }
             }
 
-            foreach (var clusterNode in clusterNodes.Where(p => p.PodUid != node.PodUid))
+            foreach (var clusterNode in clusterNodes.Where(p => p.PodUid != node.PodUid && p.PrimaryId != node.Id))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -325,6 +326,8 @@ namespace GarnetOperator.Util
             {
                 return;
             }
+
+            logger?.LogInformationEx(() => $"Forgetting node: {id}");
 
             foreach (var clusterNode in clusterNodes.Where(p => p.Id != id))
             {
