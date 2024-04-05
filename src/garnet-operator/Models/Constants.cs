@@ -198,27 +198,27 @@ namespace GarnetOperator
             /// <summary>
             /// The full description of the Garnet Operator.
             /// </summary>
-            public const string FullDescription = "";
+            public const string FullDescription = "A Kubernetes operator for Garnet.";
 
             /// <summary>
             /// The short description of the Garnet Operator.
             /// </summary>
-            public const string ShortDescription = "";
+            public const string ShortDescription = "A Kubernetes operator for Garnet.";
 
             /// <summary>
             /// The minimum Kubernetes version required by the Garnet Operator.
             /// </summary>
-            public const string MinKubeVersion = "";
+            public const string MinKubeVersion = "1.24.0";
 
             /// <summary>
             /// The maturity level of the Garnet Operator.
             /// </summary>
-            public const string Maturity = "";
+            public const string Maturity = "alpha";
 
             /// <summary>
             /// The default channel for the Garnet Operator.
             /// </summary>
-            public const string DefaultChannel = "";
+            public const string DefaultChannel = "alpha";
         }
 
         /// <summary>

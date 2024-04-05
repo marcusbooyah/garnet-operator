@@ -25,7 +25,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\garnet-operator\garnet-operator.csproj" />
+        <ProjectReference Include="..\..\src\garnet-operator\garnet-operator.csproj" />
     </ItemGroup>
 
     <ItemGroup>

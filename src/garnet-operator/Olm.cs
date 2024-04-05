@@ -7,6 +7,7 @@ using Neon.Operator.OperatorLifecycleManager;
 [assembly: Name(Name = "garnet-operator")]
 [assembly: DisplayName(DisplayName = "Garnet Operator")]
 [assembly: Version(Constants.Version)]
+[assembly: Icon("../../logo.png")]
 [assembly: Maturity(Constants.Olm.Maturity)]
 [assembly: MinKubeVersion(Constants.Olm.MinKubeVersion)]
 [assembly: Keyword("garnet", "redis", "cache")]
