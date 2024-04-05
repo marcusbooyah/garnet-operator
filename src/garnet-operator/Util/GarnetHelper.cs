@@ -76,7 +76,7 @@ namespace GarnetOperator.Util
         /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
         public Task<GarnetClient> CreateClientAsync(V1Pod pod, int port, string serviceName, CancellationToken cancellationToken = default)
         {
-            var address = $"{pod.Status.PodIP.Replace(".", "_")}.{serviceName}";
+            var address = $"{pod.Status.PodIP.Replace(".", "-")}.{serviceName}";
 
             return CreateClientAsync(address, port, pod.Namespace(), pod.Name(), cancellationToken);
         }
@@ -110,7 +110,7 @@ namespace GarnetOperator.Util
                 return cachedClient;
             }
 
-            var clusterHost = $"{address}.{@namespace}";
+            var clusterHost = $"{address}.{@namespace}.svc.cluster.local";
             var clusterPort = port;
 
             logger?.LogInformationEx(() => $"Connecting to node: {podName} at: [{clusterHost}:{clusterPort}]");
@@ -206,7 +206,7 @@ namespace GarnetOperator.Util
         {
             await SyncContext.Clear;
 
-            var clusterHost = $"{address}.{@namespace}";
+            var clusterHost = $"{address}.{@namespace}.svc.cluster.local";
             var clusterPort = port;
 
             logger?.LogInformationEx(() => $"Connecting to node: {podName} at: [{clusterHost}:{clusterPort}]");
