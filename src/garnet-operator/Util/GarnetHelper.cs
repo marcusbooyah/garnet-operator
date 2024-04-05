@@ -63,9 +63,9 @@ namespace GarnetOperator.Util
         /// </summary>
         /// <param name="node">The GarnetNode containing the connection details.</param>
         /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
-        public Task<GarnetClient> CreateClientAsync(GarnetNode node)
+        public Task<GarnetClient> CreateClientAsync(GarnetNode node, CancellationToken cancellationToken = default)
         {
-            return CreateClientAsync(node.Address, node.Port, node.Namespace, node.PodName);
+            return CreateClientAsync(node.Address, node.Port, node.Namespace, node.PodName, cancellationToken);
         }
 
         /// <summary>
@@ -74,9 +74,11 @@ namespace GarnetOperator.Util
         /// <param name="pod">The V1Pod object representing the pod.</param>
         /// <param name="port">The port number.</param>
         /// <returns>A task representing the asynchronous operation. The task result contains the GarnetClient.</returns>
-        public Task<GarnetClient> CreateClientAsync(V1Pod pod, int port)
+        public Task<GarnetClient> CreateClientAsync(V1Pod pod, int port, string serviceName, CancellationToken cancellationToken = default)
         {
-            return CreateClientAsync(pod.Status.PodIP, port, pod.Namespace(), pod.Name());
+            var address = $"{pod.Status.PodIP.Replace(".", "_")}.{serviceName}";
+
+            return CreateClientAsync(address, port, pod.Namespace(), pod.Name(), cancellationToken);
         }
 
         /// <summary>
@@ -91,7 +93,8 @@ namespace GarnetOperator.Util
             string address,
             int    port,
             string @namespace,
-            string podName)
+            string podName,
+            CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
@@ -117,11 +120,11 @@ namespace GarnetOperator.Util
                 V1Service npSvc = null;
                 try
                 {
-                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace);
+                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace, cancellationToken: cancellationToken);
                 }
                 catch
                 {
-                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace);
+                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace, cancellationToken: cancellationToken);
 
                     var svc = new V1Service().Initialize();
                     svc.Metadata.Name              = podName;
@@ -152,7 +155,7 @@ namespace GarnetOperator.Util
                         Uid        = pod.GetLabel(Constants.Labels.ClusterId),
                     });
 
-                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace);
+                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace, cancellationToken: cancellationToken);
                 }
                 clusterHost = "10.100.42.100";
                 clusterPort = npSvc.Spec.Ports.First().NodePort.Value;
@@ -165,7 +168,7 @@ namespace GarnetOperator.Util
                 clients.Add(key, client);
             }
 
-            await client.ConnectAsync();
+            await client.ConnectAsync(cancellationToken);
 
             return client;
         }
@@ -177,9 +180,9 @@ namespace GarnetOperator.Util
         /// <param name="json">A flag indicating whether the command should return the result in JSON format.</param>
         /// <param name="command">The Redis command to execute.</param>
         /// <returns>A task representing the asynchronous operation. The task result contains the Redis command result.</returns>
-        public Task<string> ExecuteRedisCommandAsync(GarnetNode node, bool json, params string[] command)
+        public Task<string> ExecuteRedisCommandAsync(GarnetNode node, bool json, CancellationToken cancellationToken = default, params string[] command)
         {
-            return ExecuteRedisCommandAsync(node.Address, node.Port, node.Namespace, node.PodName, json, command);
+            return ExecuteRedisCommandAsync(node.Address, node.Port, node.Namespace, node.PodName, json, cancellationToken, command);
         }
 
         /// <summary>
@@ -198,6 +201,7 @@ namespace GarnetOperator.Util
             string @namespace,
             string podName,
             bool json = true,
+            CancellationToken cancellationToken = default,
             params string[] command)
         {
             await SyncContext.Clear;
@@ -216,11 +220,11 @@ namespace GarnetOperator.Util
                 V1Service npSvc = null;
                 try
                 {
-                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace);
+                    npSvc = await k8s.CoreV1.ReadNamespacedServiceAsync(podName, @namespace, cancellationToken: cancellationToken);
                 }
                 catch
                 {
-                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace);
+                    var pod = await k8s.CoreV1.ReadNamespacedPodAsync(podName, @namespace, cancellationToken: cancellationToken);
 
                     var svc = new V1Service().Initialize();
                     svc.Metadata.Name = podName;
@@ -251,7 +255,7 @@ namespace GarnetOperator.Util
                         Uid        = pod.GetLabel(Constants.Labels.ClusterId),
                     });
 
-                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace);
+                    npSvc = await k8s.CoreV1.CreateNamespacedServiceAsync(svc, @namespace, cancellationToken: cancellationToken);
                 }
                 clusterHost = "10.100.42.100";
                 clusterPort = npSvc.Spec.Ports.First().NodePort.Value;
@@ -282,11 +286,11 @@ namespace GarnetOperator.Util
         /// </summary>
         /// <param name="node">The GarnetNode containing the connection details.</param>
         /// <returns>A task representing the asynchronous operation. The task result contains the list of shards.</returns>
-        public async Task<List<Shard>> GetShardsAsync(GarnetNode node)
+        public async Task<List<Shard>> GetShardsAsync(GarnetNode node, CancellationToken cancellationToken = default)
         {
             await SyncContext.Clear;
 
-            var result = await ExecuteRedisCommandAsync(node, true, "cluster", "shards");
+            var result = await ExecuteRedisCommandAsync(node, true, cancellationToken, "cluster", "shards");
 
             return JsonSerializer.Deserialize<ShardList>(result).Shards;
 

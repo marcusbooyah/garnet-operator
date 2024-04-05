@@ -4,6 +4,5 @@ metadata:
   name: test-cluster
   namespace: garnet
 spec:
-  numberOfPrimaries: 3
-  replicationFactor: 3
-  zoneAwareReplication: false
+  numberOfPrimaries: 1
+  replicationFactor: 1

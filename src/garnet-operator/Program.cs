@@ -35,7 +35,7 @@ namespace GarnetOperator
                    if (NeonHelper.IsDevWorkstation)
                    {
                        settings.PodNamespace             = "garnet";
-                       settings.UserImpersonationEnabled = false;
+                       settings.UserImpersonationEnabled = true;
                    }
                })
                .UseStartup<Startup>();

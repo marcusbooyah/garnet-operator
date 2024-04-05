@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "garnet-operator", "garnet-operator\garnet-operator.csproj", "{D5C6B56E-610A-4CBB-9CD9-FAC88E73B18D}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A027F5FD-E2C8-444B-B4AA-C4847E37CE74}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Test.garnet-operator", "tests\Test.garnet-operator\Test.garnet-operator.csproj", "{79B11E00-5D7B-4BB0-A36C-985B0C3BF605}"
@@ -16,7 +14,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.gitignore = .gitignore
 		Directory.Build.props = Directory.Build.props
 		Dockerfile = Dockerfile
+		global.json = global.json
 		LICENSE = LICENSE
+		README.md = README.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "charts", "charts", "{77190D86-D7C3-4C3F-B336-370F37165EEF}"
@@ -34,13 +34,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "templates", "templates", "{
 		charts\garnet-operator\templates\clusterrolebinding-garnet-operator.yaml = charts\garnet-operator\templates\clusterrolebinding-garnet-operator.yaml
 		charts\garnet-operator\templates\deployment.yaml = charts\garnet-operator\templates\deployment.yaml
 		charts\garnet-operator\templates\hpa.yaml = charts\garnet-operator\templates\hpa.yaml
-		charts\garnet-operator\templates\ingress.yaml = charts\garnet-operator\templates\ingress.yaml
 		charts\garnet-operator\templates\NOTES.txt = charts\garnet-operator\templates\NOTES.txt
 		charts\garnet-operator\templates\role-garnet-operator.yaml = charts\garnet-operator\templates\role-garnet-operator.yaml
 		charts\garnet-operator\templates\rolebinding-garnet-operator.yaml = charts\garnet-operator\templates\rolebinding-garnet-operator.yaml
 		charts\garnet-operator\templates\service.yaml = charts\garnet-operator\templates\service.yaml
 		charts\garnet-operator\templates\serviceaccount-garnet-operator.yaml = charts\garnet-operator\templates\serviceaccount-garnet-operator.yaml
-		charts\garnet-operator\templates\serviceaccount.yaml = charts\garnet-operator\templates\serviceaccount.yaml
+		servicemonitor.yaml = servicemonitor.yaml
 		charts\garnet-operator\templates\_helpers.tpl = charts\garnet-operator\templates\_helpers.tpl
 	EndProjectSection
 EndProject
@@ -49,20 +48,24 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "crds", "crds", "{E9DECD7B-2
 		charts\garnet-operator\crds\garnetclusters.garnet.k8soperator.io.yaml = charts\garnet-operator\crds\garnetclusters.garnet.k8soperator.io.yaml
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C92B3EC9-7D35-4745-BD9F-E14028E04BBC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "garnet-operator", "src\garnet-operator\garnet-operator.csproj", "{213012E4-7093-4C47-B858-D28CCB41F441}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{D5C6B56E-610A-4CBB-9CD9-FAC88E73B18D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D5C6B56E-610A-4CBB-9CD9-FAC88E73B18D}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D5C6B56E-610A-4CBB-9CD9-FAC88E73B18D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D5C6B56E-610A-4CBB-9CD9-FAC88E73B18D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{79B11E00-5D7B-4BB0-A36C-985B0C3BF605}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{79B11E00-5D7B-4BB0-A36C-985B0C3BF605}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{79B11E00-5D7B-4BB0-A36C-985B0C3BF605}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{79B11E00-5D7B-4BB0-A36C-985B0C3BF605}.Release|Any CPU.Build.0 = Release|Any CPU
+		{213012E4-7093-4C47-B858-D28CCB41F441}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{213012E4-7093-4C47-B858-D28CCB41F441}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{213012E4-7093-4C47-B858-D28CCB41F441}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{213012E4-7093-4C47-B858-D28CCB41F441}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -72,8 +75,10 @@ Global
 		{66098B24-9708-449E-8EFF-F8ADAF4CB74D} = {77190D86-D7C3-4C3F-B336-370F37165EEF}
 		{E17937B5-1B53-4DD2-A18D-9F9E6B130466} = {66098B24-9708-449E-8EFF-F8ADAF4CB74D}
 		{E9DECD7B-2B88-4FA1-9BA7-64BCC0E72489} = {66098B24-9708-449E-8EFF-F8ADAF4CB74D}
+		{213012E4-7093-4C47-B858-D28CCB41F441} = {C92B3EC9-7D35-4745-BD9F-E14028E04BBC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
+		FileExplorer = 
 		SolutionGuid = {08F7138A-47B2-439E-AC75-231DD8D6A981}
 	EndGlobalSection
 EndGlobal

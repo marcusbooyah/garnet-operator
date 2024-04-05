@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/marcusbooyah/garnet-operator
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
@@ -38,7 +38,8 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 80
+  port: 5000
+  containerPort: 5000
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
@@ -64,3 +65,20 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+metrics:
+  # Enable Prometheus metrics endpoint
+  enabled: false
+  # Serve Prometheus metrics on this port
+  port: 9762
+  servicemonitor:
+    # Enable Prometheus Operator ServiceMonitor
+    enabled: false
+    # Define the namespace where to deploy the ServiceMonitor resource
+    namespace: ""
+    # Prometheus scrape interval
+    interval: 60s
+    # Prometheus scrape timeout
+    scrapeTimeout: 30s
+    # Add custom labels to the ServiceMonitor resource
+    labels: {}

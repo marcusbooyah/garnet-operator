@@ -84,7 +84,14 @@ namespace GarnetOperator
 
         public override Task<ErrorPolicyResult> ErrorPolicyAsync(V1alpha1GarnetCluster entity, int attempt, Exception exception, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new ErrorPolicyResult(TimeSpan.Zero, Neon.Operator.Controllers.WatchEventType.Modified, true));
+            if (NeonHelper.IsDevWorkstation)
+            {
+                return Task.FromResult(new ErrorPolicyResult(TimeSpan.Zero, Neon.Operator.Controllers.WatchEventType.Modified, true));
+            }
+            else
+            {
+                return base.ErrorPolicyAsync(entity, attempt, exception, cancellationToken);
+            }
         }
 
         /// <inheritdoc/>
@@ -103,10 +110,15 @@ namespace GarnetOperator
 
             await InitializeStatusAsync(cancellationToken);
             await GetClusterPodsAsync(cancellationToken);
+
             await ReconcileServicesAsync(cancellationToken);
-            await GetCurrentStatusAsync();
+
+            //await GetCurrentStatusAsync(cancellationToken);
+
             await ReconcilePodsAsync(cancellationToken);
+
             await InitializeClusterAsync(cancellationToken);
+
             await ConfigureClusterAsync(cancellationToken);
 
             if (primaries.Count() != cluster.Spec.NumberOfPrimaries
@@ -148,9 +160,9 @@ namespace GarnetOperator
                 attributes.Add(Constants.Labels.ClusterName, cluster.Name());
             });
 
-            var client = await garnetHelper.CreateClientAsync(primaries.SelectRandom().First());
+            var client = await garnetHelper.CreateClientAsync(primaries.SelectRandom().First(), cancellationToken);
 
-            var nodes = await client.GetNodesAsync();
+            var nodes = await client.GetNodesAsync(cancellationToken);
 
             foreach (var node in nodes)
             {
@@ -169,7 +181,7 @@ namespace GarnetOperator
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
-            var client = await garnetHelper.CreateClientAsync(primaries.SelectRandom().First());
+            var client = await garnetHelper.CreateClientAsync(primaries.SelectRandom().First(), cancellationToken);
 
             clusterNodes = await client.GetNodesAsync(cancellationToken);
 
@@ -338,7 +350,7 @@ namespace GarnetOperator
             foreach (var batch in slotsToMigrate)
             {
                 var node   = ClusterIdToGarnetNode(batch.Key);
-                var client = await garnetHelper.CreateClientAsync(node);
+                var client = await garnetHelper.CreateClientAsync(node, cancellationToken);
 
                 foreach (var toNode in batch.Value)
                 {
@@ -346,8 +358,8 @@ namespace GarnetOperator
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        var toClient = await garnetHelper.CreateClientAsync(toNode.Value.ToNode);
-                        var info     = await toClient.GetSelfAsync();
+                        var toClient = await garnetHelper.CreateClientAsync(toNode.Value.ToNode, cancellationToken: cancellationToken);
+                        var info     = await toClient.GetSelfAsync(cancellationToken: cancellationToken);
 
                         if (!info.Slots.Contains(r.Min) && !info.Slots.Contains(r.Max))
                         {
@@ -357,19 +369,25 @@ namespace GarnetOperator
                             });
 
                             await client.MigrateSlotsRangeAsync(
-                                address: toNode.Value.ToNode.PodIp,
-                                port: toNode.Value.ToNode.Port,
-                                start: r.Min,
-                                end: r.Max);
+                                address:           toNode.Value.ToNode.PodIp,
+                                port:              toNode.Value.ToNode.Port,
+                                start:             r.Min,
+                                end:               r.Max,
+                                cancellationToken: cancellationToken);
 
                             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+                            logger?.LogInformationEx(() => $"Moved slots [{r.Min} {r.Max}] to [{toNode.Value.ToNode.Address}]", attributes =>
+                            {
+                                attributes.Add(Constants.Labels.ClusterName, cluster.Name());
+                            });
                         }
 
-                        info = await toClient.GetSelfAsync();
+                        info = await toClient.GetSelfAsync(cancellationToken);
 
                         cluster.Status.Cluster.Nodes[toNode.Value.ToNode.PodUid].Slots = info.Slots;
 
-                        var firstPrimaryInfo = await client.GetSelfAsync();
+                        var firstPrimaryInfo = await client.GetSelfAsync(cancellationToken);
 
                         cluster.Status.Cluster.Nodes[node.PodUid].Slots = firstPrimaryInfo.Slots;
 
@@ -407,7 +425,7 @@ namespace GarnetOperator
                         continue;
                     }
 
-                    var client = await garnetHelper.CreateClientAsync(node);
+                    var client = await garnetHelper.CreateClientAsync(node, cancellationToken);
 
                     var primaryCandidates = cluster
                         .Status
@@ -438,12 +456,15 @@ namespace GarnetOperator
                         await client.DetachReplicaAsync(cancellationToken);
                     }
 
-                    await client.ReplicateAsync(primary.Id);
+                    await client.ReplicateAsync(primary.Id, cancellationToken);
 
                     node.Role      = GarnetRole.Replica;
                     node.PrimaryId = primary.Id;
 
-                    cluster.Status.Cluster.NumberOfReplicasPerPrimary[existingPrimary.PodUid]--;
+                    if (cluster.Status.Cluster.NumberOfReplicasPerPrimary.ContainsKey(existingPrimary.PodUid))
+                    {
+                        cluster.Status.Cluster.NumberOfReplicasPerPrimary[existingPrimary.PodUid]--;
+                    }
 
                     await SaveStatusAsync(cancellationToken);
                 }
@@ -480,16 +501,16 @@ namespace GarnetOperator
             {
                 var pod = clusterPods.First().Value;
 
-                logger?.LogInformationEx(() => $"Pod {pod.Name()}/{pod.Namespace()} is first master", attributes =>
+                logger?.LogInformationEx(() => $"Pod {pod.Namespace()}/{pod.Name()} is first master", attributes =>
                 {
                     attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                 });
+                
+                clusterClient = await garnetHelper.CreateClientAsync(pod, Constants.Ports.Redis, headlessServiceName, cancellationToken);
 
-                clusterClient = await garnetHelper.CreateClientAsync(pod, Constants.Ports.Redis);
+                await clusterClient.ClusterResetAsync(true, cancellationToken);
 
-                await clusterClient.ClusterResetAsync(true);
-
-                var id = await clusterClient.MyIdAsync();
+                var id = await clusterClient.MyIdAsync(cancellationToken);
 
                 var slotStart = 0;
                 var slotEnd   = Constants.Redis.Slots / cluster.Spec.NumberOfPrimaries - 1;
@@ -510,29 +531,32 @@ namespace GarnetOperator
                 cluster.Status.LastEpoch                                     = 1;
 
                 await clusterClient.AddSlotsRangeAsync(
-                    start: slotStart,
-                    end:   slotEnd);
+                    start:             slotStart,
+                    end:               slotEnd,
+                    cancellationToken: cancellationToken);
 
-                await clusterClient.SetConfigEpochAsync(1);
+                await clusterClient.SetConfigEpochAsync(
+                    epoch:             1,
+                    cancellationToken: cancellationToken);
 
                 await SaveStatusAsync(cancellationToken);
             }
 
             var initPrimary   = primaries.Where(n => n.ConfigEpoch == 1).FirstOrDefault();
 
-            clusterClient ??= await garnetHelper.CreateClientAsync(initPrimary);
+            clusterClient ??= await garnetHelper.CreateClientAsync(initPrimary, cancellationToken);
 
             while (primaries.Count() < cluster.Spec.NumberOfPrimaries)
             {
                 var pod    = orphans.First();
 
-                logger?.LogInformationEx(() => $"Adding pod {pod.PodName}/{pod.Namespace} as master", attributes =>
+                logger?.LogInformationEx(() => $"Adding pod {pod.Namespace}/{pod.PodName} as master", attributes =>
                 {
                     attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                 });
 
                 var k8sPod = clusterPods[pod.PodUid];
-                var client = await garnetHelper.CreateClientAsync(pod);
+                var client = await garnetHelper.CreateClientAsync(pod, cancellationToken);
                 var node   = primaries.Count();
 
                 var start = (node) * (Constants.Redis.Slots / cluster.Spec.NumberOfPrimaries);
@@ -543,11 +567,11 @@ namespace GarnetOperator
                     end = Constants.Redis.Slots - 1;
                 }
 
-                await client.ClusterResetAsync(true);
+                await client.ClusterResetAsync(true, cancellationToken);
 
-                var clusterInfo = await clusterClient.ClusterInfoAsync();
+                var clusterInfo = await clusterClient.ClusterInfoAsync(cancellationToken);
                 var epoch       = clusterInfo.CurrentEpoch + 1;
-                var id          = await client.MyIdAsync();
+                var id          = await client.MyIdAsync(cancellationToken);
 
                 cluster.Status.Cluster.Nodes[pod.PodUid].Id                   = id;
                 cluster.Status.Cluster.Nodes[pod.PodUid].Role                 = GarnetRole.Primary;
@@ -557,12 +581,18 @@ namespace GarnetOperator
                 cluster.Status.LastEpoch                                      = epoch;
 
                 await client.AddSlotsRangeAsync(
-                    start: start,
-                    end:   end);
+                    start:             start,
+                    end:               end,
+                    cancellationToken: cancellationToken);
 
-                await client.SetConfigEpochAsync(epoch);
+                await client.SetConfigEpochAsync(
+                    epoch:             epoch,
+                    cancellationToken: cancellationToken);
 
-                await clusterClient.MeetAsync(pod.Address, pod.Port);
+                await clusterClient.MeetAsync(
+                    address:           pod.Address,
+                    port:              pod.Port,
+                    cancellationToken: cancellationToken);
 
                 await SaveStatusAsync(cancellationToken);
             }
@@ -591,7 +621,7 @@ namespace GarnetOperator
 
             GarnetClient clusterClient = null;
 
-            clusterClient ??= await garnetHelper.CreateClientAsync(primaries.First());
+            clusterClient ??= await garnetHelper.CreateClientAsync(primaries.First(), cancellationToken);
 
             while (primaries.Count() < cluster.Spec.NumberOfPrimaries)
             {
@@ -602,28 +632,31 @@ namespace GarnetOperator
                 {
                     pod = promoting.First();
 
-                    var replicaClient = await garnetHelper.CreateClientAsync(pod);
-                    var resp          = await replicaClient.DetachReplicaAsync();
+                    var replicaClient = await garnetHelper.CreateClientAsync(pod, cancellationToken);
+                    var resp          = await replicaClient.DetachReplicaAsync(cancellationToken);
 
-                    await clusterClient.MeetAsync(pod.Address, Constants.Ports.Redis);
+                    await clusterClient.MeetAsync(
+                        address:           pod.Address,
+                        port:              Constants.Ports.Redis,
+                        cancellationToken: cancellationToken);
                 }
                 else
                 {
                     pod = orphans.First();
 
-                    var replicaClient = await garnetHelper.CreateClientAsync(pod);
-                    var clusterInfo   = await clusterClient.ClusterInfoAsync();
+                    var replicaClient = await garnetHelper.CreateClientAsync(pod, cancellationToken);
+                    var clusterInfo   = await clusterClient.ClusterInfoAsync(cancellationToken);
                     var epoch         = clusterInfo.CurrentEpoch + 1;
 
-                    await replicaClient.ClusterResetAsync(true);
-                    await replicaClient.SetConfigEpochAsync(epoch);
+                    await replicaClient.ClusterResetAsync(true, cancellationToken);
+                    await replicaClient.SetConfigEpochAsync(epoch: epoch, cancellationToken: cancellationToken);
 
-                    var id = await replicaClient.MyIdAsync();
+                    var id = await replicaClient.MyIdAsync(cancellationToken);
 
                     cluster.Status.Cluster.Nodes[pod.PodUid].Id          = id;
                     cluster.Status.Cluster.Nodes[pod.PodUid].ConfigEpoch = epoch;
 
-                    var resp = await clusterClient.MeetAsync(pod.Address);
+                    var resp = await clusterClient.MeetAsync(address: pod.Address, cancellationToken: cancellationToken);
                 }
 
                 if (pod == null)
@@ -631,7 +664,7 @@ namespace GarnetOperator
                     return;
                 }
 
-                logger?.LogInformationEx(() => $"Adding pod {pod.PodName}/{pod.Namespace} as master", attributes =>
+                logger?.LogInformationEx(() => $"Adding pod {pod.Namespace}/{pod.PodName} as master", attributes =>
                 {
                     attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                 });
@@ -656,7 +689,7 @@ namespace GarnetOperator
                     pod = primaries.OrderBy(p => p.NumSlots()).FirstOrDefault();
                 }
 
-                logger?.LogInformationEx(() => $"Adding pod {pod.PodName}/{pod.Namespace} as replica", attributes =>
+                logger?.LogInformationEx(() => $"Adding pod {pod.Namespace}/{pod.PodName} as replica", attributes =>
                 {
                     attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                 });
@@ -677,21 +710,21 @@ namespace GarnetOperator
                 primary   = cluster.Status.Cluster.Nodes[primaryUid];
 
 
-                var replicaClient = await garnetHelper.CreateClientAsync(pod);
-                var primaryClient = await garnetHelper.CreateClientAsync(primary);
+                var replicaClient = await garnetHelper.CreateClientAsync(pod, cancellationToken);
+                var primaryClient = await garnetHelper.CreateClientAsync(primary, cancellationToken);
                 var clusterInfo   = await primaryClient.ClusterInfoAsync(cancellationToken);
                 var epoch         = clusterInfo.CurrentEpoch + 1;
 
-                await garnetHelper.ForgetNodeAsync(pod, allNodes);
+                await garnetHelper.ForgetNodeAsync(pod, allNodes, cancellationToken);
 
-                await replicaClient.ClusterResetAsync(true);
+                await replicaClient.ClusterResetAsync(true, cancellationToken);
 
-                await replicaClient.SetConfigEpochAsync(epoch);
+                await replicaClient.SetConfigEpochAsync(epoch, cancellationToken);
 
-                await replicaClient.MeetAsync(primary.Address, primary.Port);
-                await replicaClient.ReplicateAsync(primary.Id);
+                await replicaClient.MeetAsync(primary.Address, primary.Port, cancellationToken);
+                await replicaClient.ReplicateAsync(primary.Id, cancellationToken);
 
-                var replicaId     = await replicaClient.MyIdAsync();
+                var replicaId     = await replicaClient.MyIdAsync(cancellationToken);
 
                 cluster.Status.Cluster.NumberOfReplicasPerPrimary[primaryUid] = primaryReplicas + 1;
                 cluster.Status.Cluster.Nodes[pod.PodUid].Id                   = replicaId;
@@ -777,7 +810,7 @@ namespace GarnetOperator
                 cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Leaving;
                 cluster.Status.Cluster.NumberOfReplicasPerPrimary.Remove(pod.PodUid);
 
-                logger?.LogInformationEx(() => $"Marking master pod {pod.PodName}/{pod.Namespace} for removal", attributes =>
+                logger?.LogInformationEx(() => $"Marking master pod {pod.Namespace}/{pod.PodName} for removal", attributes =>
                 {
                     attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                 });
@@ -807,7 +840,7 @@ namespace GarnetOperator
 
                 if (allNodes.Where(n => n.Role != GarnetRole.Leaving).Count() > numPodsRequired)
                 {
-                    logger?.LogInformationEx(() => $"Marking replica pod {pod.PodName}/{pod.Namespace} for removal", attributes =>
+                    logger?.LogInformationEx(() => $"Marking replica pod {pod.Namespace}/{pod.PodName} for removal", attributes =>
                     {
                         attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                     });
@@ -815,14 +848,18 @@ namespace GarnetOperator
                     if (cluster.Status.Cluster.Nodes[pod.PodUid].Role == GarnetRole.Replica)
                     {
                         var primary = ClusterIdToGarnetNode(pod.PrimaryId);
-                        cluster.Status.Cluster.NumberOfReplicasPerPrimary[primary.PodUid]--;
+
+                        if (cluster.Status.Cluster.NumberOfReplicasPerPrimary.ContainsKey(primary.PodUid))
+                        {
+                            cluster.Status.Cluster.NumberOfReplicasPerPrimary[primary.PodUid]--;
+                        }
                     }
 
                     cluster.Status.Cluster.Nodes[pod.PodUid].Role = GarnetRole.Leaving;
                 }
                 else
                 {
-                    logger?.LogInformationEx(() => $"Marking replica pod {pod.PodName}/{pod.Namespace} for promotion", attributes =>
+                    logger?.LogInformationEx(() => $"Marking replica pod {pod.Namespace}/{pod.PodName} for promotion", attributes =>
                     {
                         attributes.Add(Constants.Labels.ClusterName, cluster.Name());
                     });
@@ -849,7 +886,7 @@ namespace GarnetOperator
 
             foreach (var leavingNode in leaving)
             {
-                await garnetHelper.ForgetNodeAsync(leavingNode, allNodes);
+                await garnetHelper.ForgetNodeAsync(leavingNode, allNodes, cancellationToken);
 
                 try
                 {
@@ -959,9 +996,9 @@ namespace GarnetOperator
 
             foreach (var pod in clusterPods)
             {
-                var client = await garnetHelper.CreateClientAsync(pod.Value, Constants.Ports.Redis);
+                var client = await garnetHelper.CreateClientAsync(pod.Value, Constants.Ports.Redis, headlessServiceName, cancellationToken);
 
-                var self = await client.GetSelfAsync();
+                var self = await client.GetSelfAsync(cancellationToken);
 
                 cluster.Status.Cluster.Nodes.TryGetValue(pod.Value.Uid(), out var status);
 
@@ -1027,7 +1064,17 @@ namespace GarnetOperator
                         {
                             try
                             {
-                                if (!cluster.Status.Cluster.Nodes.ContainsKey(@event.Value.Uid()))
+                                if (cluster.Status.Cluster.Nodes.TryGetValue(@event.Value.Uid(), out var pod))
+                                {
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].Address   = cluster.CreatePodAddress(@event.Value);
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].Namespace = cluster.Namespace();
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].NodeName  = @event.Value.Spec.NodeName;
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].PodName   = @event.Value.Name();
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].PodUid    = @event.Value.Uid();
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].Zone      = @event.Value.Spec.NodeName;
+                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].PodIp     = @event.Value.Status.PodIP;
+                                }
+                                else
                                 {
                                     cluster.Status.Cluster.Nodes.Add(@event.Value.Uid(), new GarnetNode()
                                     {
@@ -1041,10 +1088,6 @@ namespace GarnetOperator
                                         Zone      = @event.Value.Spec.NodeName,
                                         PodIp     = @event.Value.Status.PodIP
                                     });
-                                }
-                                else
-                                {
-                                    cluster.Status.Cluster.Nodes[@event.Value.Uid()].Address = cluster.CreatePodAddress(@event.Value);
                                 }
 
                                 if (clusterPods.Values.All(p => p.Status.ContainerStatuses?.All(cs => cs.Ready == true) == true))
@@ -1095,6 +1138,19 @@ namespace GarnetOperator
         {
             var image = cluster.Spec.Image ?? new ImageSpec();
 
+            var args = new List<string>()
+            {
+                "--cluster",
+                "--aof",
+                "--bind", "$(POD_IP)",
+                "--port", Constants.Ports.Redis.ToString(),
+            };
+
+            if (cluster.Spec.AdditionalArgs != null && cluster.Spec.AdditionalArgs.Count > 0)
+            {
+                args.AddRange(cluster.Spec.AdditionalArgs);
+            }
+
             return new V1PodSpec()
             {
                 Containers =
@@ -1109,14 +1165,7 @@ namespace GarnetOperator
                         [
                             "/app/GarnetServer"
                         ],
-                        Args =
-                        [
-                            "--cluster",
-                            "--aof",
-                            "--bind", "$(POD_IP)",
-                            "--port", Constants.Ports.Redis.ToString(),
-                            "-i", "64m"
-                        ],
+                        Args = args,
                         Ports = 
                         [
                             new V1ContainerPort(){
@@ -1190,9 +1239,10 @@ namespace GarnetOperator
                         }
                     }
                 ],
-                NodeSelector = cluster.Spec.NodeSelector,
-                Affinity     = cluster.Spec.Affinity,
-                Tolerations  = cluster.Spec.Tolerations
+                NodeSelector              = cluster.Spec.NodeSelector,
+                Affinity                  = cluster.Spec.Affinity,
+                Tolerations               = cluster.Spec.Tolerations,
+                TopologySpreadConstraints = cluster.Spec.TopologySpreadConstraints
             };
         }
 

@@ -221,8 +221,14 @@ namespace GarnetOperator
             public const string DefaultChannel = "";
         }
 
+        /// <summary>
+        /// Constants related to Redis.
+        /// </summary>
         public class Redis
         {
+            /// <summary>
+            /// The number of slots in Redis.
+            /// </summary>
             public const int Slots = 16384;
         }
     }

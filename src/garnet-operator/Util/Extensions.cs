@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using GarnetOperator.Models;
@@ -9,12 +10,9 @@ using GarnetOperator.Models;
 using k8s;
 using k8s.Models;
 
-using Neon.Common;
-using Neon.Collections;
 using Neon.K8s;
 using Neon.K8s.Core;
 using Neon.Operator.Util;
-using System.Threading;
 
 namespace GarnetOperator
 {
@@ -160,9 +158,10 @@ namespace GarnetOperator
             patch.Replace(r => r.Status.Conditions, resource.Status.Conditions);
 
             await k8s.CustomObjects.PatchNamespacedCustomObjectStatusAsync<V1alpha1GarnetCluster>(
-                patch: OperatorHelper.ToV1Patch(patch),
-                name: resource.Name(),
-                namespaceParameter: resource.Namespace());
+                patch:              OperatorHelper.ToV1Patch(patch),
+                name:               resource.Name(),
+                namespaceParameter: resource.Namespace(),
+                cancellationToken:  cancellationToken);
         }
 
         /// <summary>
@@ -196,8 +195,8 @@ namespace GarnetOperator
             patch.Replace(r => r.Status.Cluster.Nodes, resource.Status.Cluster.Nodes);
 
             await k8s.CustomObjects.PatchNamespacedCustomObjectStatusAsync<V1alpha1GarnetCluster>(
-                patch: OperatorHelper.ToV1Patch(patch),
-                name: resource.Name(),
+                patch:              OperatorHelper.ToV1Patch(patch),
+                name:               resource.Name(),
                 namespaceParameter: resource.Namespace());
         }
 

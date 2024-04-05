@@ -1,18 +1,33 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace GarnetOperator.Models
 {
+
+    /// <summary>
+    /// Represents a slot migration.
+    /// </summary>
     public class SlotMigration
     {
+        /// <summary>
+        /// Gets or sets the ID of the slot migration source.
+        /// </summary>
         public string FromId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the destination node of the slot migration.
+        /// </summary>
         public GarnetNode ToNode { get; set; }
 
+        /// <summary>
+        /// Gets or sets the set of slots to be migrated.
+        /// </summary>
         public HashSet<int> Slots { get; set; }
 
+        /// <summary>
+        /// Gets the list of slot ranges for the migration.
+        /// </summary>
+        /// <returns>The list of slot ranges.</returns>
         public List<SlotRange> GetSlotRanges()
         {
             var sorted = Slots.Order().ToList();

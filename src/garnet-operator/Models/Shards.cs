@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace GarnetOperator.Models
 {
+
     [System.Text.Json.Serialization.JsonConverter(typeof(ShardConverter))]
     public class ShardList
     {
