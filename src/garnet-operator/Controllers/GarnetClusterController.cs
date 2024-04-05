@@ -1153,9 +1153,9 @@ namespace GarnetOperator
                 "--port", Constants.Ports.Redis.ToString(),
             };
 
-            if (cluster.Spec.AdditionalArgs != null && cluster.Spec.AdditionalArgs.Count > 0)
+            if (cluster.Spec.Options.AdditionalArgs != null && cluster.Spec.Options.AdditionalArgs.Count > 0)
             {
-                args.AddRange(cluster.Spec.AdditionalArgs);
+                args.AddRange(cluster.Spec.Options.AdditionalArgs);
             }
 
             return new V1PodSpec()

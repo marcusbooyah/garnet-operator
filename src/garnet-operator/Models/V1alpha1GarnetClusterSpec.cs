@@ -28,9 +28,9 @@ namespace GarnetOperator.Models
         public int ReplicationFactor { get; set; } = 1;
 
         /// <summary>
-        /// Additional Garnet arguments.
+        /// Garnet options.
         /// </summary>
-        public List<string> AdditionalArgs { get; set; }
+        public GarnetOptions Options { get; set; }
 
 
         /// <summary>

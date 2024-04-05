@@ -29,10 +29,13 @@ spec:
               replicationFactor:
                 format: int32
                 type: integer
-              additionalArgs:
-                items:
-                  type: string
-                type: array
+              options:
+                properties:
+                  additionalArgs:
+                    items:
+                      type: string
+                    type: array
+                type: object
               serviceName:
                 type: string
               securityContext:

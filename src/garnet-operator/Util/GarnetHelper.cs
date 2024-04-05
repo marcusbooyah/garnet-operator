@@ -98,22 +98,27 @@ namespace GarnetOperator.Util
         {
             await SyncContext.Clear;
 
+            var clusterHost = $"{address}.{@namespace}.svc.cluster.local";
+            var clusterPort = port;
+
+            logger?.LogInformationEx(() => $"Connecting to node: {podName} at: [{clusterHost}:{clusterPort}]");
+
             var key = CreateKey(podName, @namespace);
 
             if (clients.TryGetValue(key, out var cachedClient))
             {
+                logger?.LogInformationEx(() => $"Returning cached client");
+
                 if (!cachedClient.IsConnected)
                 {
+                    logger?.LogInformationEx(() => $"Reconnecting cached client");
+
                     await cachedClient.ConnectAsync();
                 }
 
                 return cachedClient;
             }
 
-            var clusterHost = $"{address}.{@namespace}.svc.cluster.local";
-            var clusterPort = port;
-
-            logger?.LogInformationEx(() => $"Connecting to node: {podName} at: [{clusterHost}:{clusterPort}]");
 
             if (NeonHelper.IsDevWorkstation)
             {
@@ -343,9 +348,9 @@ namespace GarnetOperator.Util
             }
         }
 
-        private static string CreateKey(string podName, string podNamespace)
+        private static string CreateKey(params object[] args)
         {
-            return $"{podName}.{podNamespace}";
+            return string.Join("_", args.Select(x => x.ToString()));
         }
     }
 }

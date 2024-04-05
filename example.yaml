@@ -5,4 +5,4 @@ metadata:
   namespace: garnet
 spec:
   numberOfPrimaries: 1
-  replicationFactor: 1
+  replicationFactor: 2

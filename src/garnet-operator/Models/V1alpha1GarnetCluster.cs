@@ -64,7 +64,7 @@ namespace GarnetOperator.Models
         /// <returns>The service name.</returns>
         public string GetServiceName()
         {
-            return (Spec.ServiceName ?? Metadata.Name) + "." + Metadata.NamespaceProperty;
+            return Spec.ServiceName ?? Metadata.Name;
         }
 
         /// <summary>
@@ -73,7 +73,7 @@ namespace GarnetOperator.Models
         /// <returns>The headless service name.</returns>
         public string GetHeadlessServiceName()
         {
-            return (Spec.ServiceName ?? Metadata.Name) + "-headless" + "." + Metadata.NamespaceProperty;
+            return (Spec.ServiceName ?? Metadata.Name) + "-headless";
         }
 
         /// <summary>
