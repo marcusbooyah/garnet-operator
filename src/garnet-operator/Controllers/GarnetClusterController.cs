@@ -41,7 +41,12 @@ namespace GarnetOperator
     [RbacRule<V1ConfigMap>(Scope = EntityScope.Cluster, Verbs = RbacVerb.All, SubResources = "status")]
     [RbacRule<V1PodDisruptionBudget>(Scope = EntityScope.Cluster, Verbs = RbacVerb.All, SubResources = "status")]
     [RbacRule<V1alpha1GarnetCluster>(Scope = EntityScope.Cluster, Verbs = RbacVerb.All, SubResources = "status")]
-    [ResourceController(AutoRegisterFinalizers = true, ErrorMaxRequeueIntervalSeconds = 60, MaxConcurrentReconciles = 10, MaxConcurrentFinalizers = 10)]
+    [ResourceController(
+        AutoRegisterFinalizers = true,
+        ErrorMinRequeueIntervalSeconds = 10,
+        ErrorMaxRequeueIntervalSeconds = 60,
+        MaxConcurrentReconciles = 10,
+        MaxConcurrentFinalizers = 10)]
     public class GarnetClusterController : ResourceControllerBase<V1alpha1GarnetCluster>
     {
         private readonly IKubernetes                              k8s;
@@ -928,11 +933,6 @@ namespace GarnetOperator
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
-            logger?.LogInformationEx(() => $"Scaling up cluster", attributes =>
-            {
-                attributes.Add(Constants.Labels.ClusterName, cluster.Name());
-            });
-
             await cluster.SetConditionAsync(
                 k8s:               k8s,
                 type:              Constants.Conditions.Scaling,
@@ -941,7 +941,14 @@ namespace GarnetOperator
                 message:           Constants.Conditions.ScalingUpMessage,
                 cancellationToken: cancellationToken);
 
-            var numPodsNeeded = NumPodsRequired() - clusterPods?.Count() ?? 0;
+            var podsRequired = NumPodsRequired();
+            var numPodsNeeded = podsRequired - clusterPods?.Count() ?? 0;
+
+            logger?.LogInformationEx(() => $"Scaling up cluster from {clusterPods?.Count() ?? 0} to {podsRequired} ", attributes =>
+            {
+                attributes.Add(Constants.Labels.ClusterName, cluster.Name());
+            });
+            
             var spec = CreatePodSpec();
 
             for (int i = 0; i < numPodsNeeded; i++)
@@ -1291,9 +1298,14 @@ namespace GarnetOperator
 
             using var activity = TraceContext.ActivitySource?.StartActivity();
 
+            logger?.LogInformationEx(() => $"Getting cluster pods", attributes =>
+            {
+                attributes.Add(Constants.Labels.ClusterName, cluster.Name());
+            });
+
             var pods = await k8s.CoreV1.ListNamespacedPodAsync(
                 namespaceParameter: cluster.Metadata.NamespaceProperty,
-                labelSelector:      cluster.Spec.AdditionalLabels.ToLabelSelector(),
+                labelSelector:      $"{Constants.Labels.ClusterId}={cluster.Uid()}",
                 cancellationToken:  cancellationToken);
 
             var result = new Dictionary<string, V1Pod>();
@@ -1313,6 +1325,11 @@ namespace GarnetOperator
                     await SaveStatusAsync(cancellationToken);
                 }
             }
+
+            logger?.LogInformationEx(() => $"Cluster has {result.Count} pods", attributes =>
+            {
+                attributes.Add(Constants.Labels.ClusterName, cluster.Name());
+            });
 
             clusterPods = result;
         }

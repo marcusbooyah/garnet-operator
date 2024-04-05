@@ -36,7 +36,15 @@ namespace GarnetOperator
                 }
 
                 options.ClearProviders();
-                options.AddJsonConsole();
+
+                if (NeonHelper.IsDevWorkstation)
+                {
+                    options.AddSimpleConsole();
+                }
+                else
+                {
+                    options.AddJsonConsole();
+                }
             });
 
             var logger = loggerFactory.CreateLogger<Startup>();
