@@ -1,5 +1,5 @@
 <p style="text-align:center;" align="center">
-  <img src="https://raw.githubusercontent.com/marcusbooyah/garnet-operator/main/logo.png" width="175" height="175"/></a>  
+  <img src="https://github.com/marcusbooyah/garnet-operator/blob/main/logo.png?raw=true" width="175" height="175"/></a>  
 </p>
 
 ⚠️ UNDER ACTIVE DEVELOPMENT
